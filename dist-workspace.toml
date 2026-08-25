@@ -3,11 +3,6 @@ members = ["cargo:."]
 
 # Config for 'dist'
 [dist]
-# Builds the no-admin-rights installer/app format for the current OS (AppImage
-# on Linux, per-user NSIS on Windows, .app on macOS) and hands dist a file
-# named after the package binary, since dist only knows how to archive a
-# single loose executable next to Cargo.toml. See scripts/dist-bundle.sh.
-build-command = ["bash", "scripts/dist-bundle.sh"]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.32.0"
 # CI backends to support
@@ -23,11 +18,15 @@ targets = [
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
 ]
-# Ship the real macOS .app bundle alongside the raw binary dist also archives
-# (dist-bundle.sh creates an empty placeholder on Linux/Windows so this path
-# always exists).
-include = ["SciWIn Studio.app"]
-github-build-setup = "../build-setup.yml"
+# dist's own local-artifact build always does a plain `cargo build` for a
+# Cargo-based workspace (this crate) - it never consults `build-command`,
+# that's a Generic/JS-workspace-only feature. So we replace the whole
+# build-local-artifacts job with our own, which still uses `dist build` for
+# its correct manifest/archive/checksum handling, then patches the resulting
+# archive to swap the plain binary for the real `dx bundle` output. See
+# .github/workflows/build-app.yml.
+build-local-artifacts = false
+local-artifacts-jobs = ["./build-app"]
 
 [dist.github-custom-runners]
 global = "ubuntu-latest"
