@@ -1,0 +1,34 @@
+name: 🦆 Continuous Integration
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+jobs:
+    ci-pipeline:
+        permissions:
+            contents: read
+            pull-requests: write
+            actions: read
+
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+
+            - uses: actions-rust-lang/setup-rust-toolchain@v1
+            - name: Install cargo-nextest
+              uses: baptiste0928/cargo-install@v3
+              with:
+                  crate: cargo-nextest
+                  locked: true
+            - name: 📎Linting
+              run: cargo clippy --workspace
+            - name: Run tests
+              run: cargo nextest run --workspace --no-fail-fast
+            - name: Install cargo-tarpaulin
+              uses: baptiste0928/cargo-install@v3
+              with:
+                  crate: cargo-tarpaulin
+                  locked: true
