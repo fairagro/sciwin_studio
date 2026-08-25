@@ -63,6 +63,9 @@ rand = "0.10.2"
 shlex = "2.0.1"
 
 [dev-dependencies]
+tempfile = "3.27.0"
+serial_test = "4.0.1"
+fstest = "0.4.0"
 
 [features]
 default = ["desktop"]
