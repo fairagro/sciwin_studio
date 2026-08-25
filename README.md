@@ -33,7 +33,7 @@ Computational workflows make complex, multi-step analyses reproducible, scalable
 Every SciWIn Studio project is a `sciwin`/`s4n` project on disk (a `workflow.toml` plus a git repository), so projects created or edited in the GUI stay fully compatible with the `s4n` CLI and vice versa.
 
 ## Features
-- **Visual workflow design** — arrange CWL tools on a canvas and connect their inputs and outputs with drag-and-drop, auto-laid-out with [Sugiyama-style](https://crates.io/crates/rust-sugiyama) graph layout
+- **Visual workflow design** — arrange CWL tools on a canvas and connect their inputs and outputs with drag-and-drop
 - **Tool authoring** — generate new CWL `CommandLineTool`s from a command, container image, and arguments through a guided form
 - **Built-in code editor** — inspect and edit the underlying CWL YAML with a [Monaco](https://microsoft.github.io/monaco-editor/)-powered editor
 - **Git-backed projects** — every change is staged and committed automatically, so a project's history is always a working, versioned record
