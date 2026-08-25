@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_load_workflow_graph() {
-        let path = "../../testdata/hello_world/workflows/main/main.cwl";
+        let path = "testdata/hello_world/workflows/main/main.cwl";
         let CWLDocument::Workflow(workflow) = load_cwl_file(path, true).unwrap() else {
             panic!("Expected a workflow document")
         };
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_load_workflow_graph_02() {
-        let path = "../../testdata/mkdir_wf.cwl";
+        let path = "testdata/mkdir_wf.cwl";
         let CWLDocument::Workflow(workflow) = load_cwl_file(path, true).unwrap() else {
             panic!("Expected a workflow document")
         };

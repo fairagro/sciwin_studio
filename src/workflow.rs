@@ -331,7 +331,7 @@ mod tests {
     fn setup() -> (PathBuf, TempDir) {
         let dir = tempdir().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
-        copy_dir("../../testdata/hello_world", dir.path()).unwrap();
+        copy_dir("testdata/hello_world", dir.path()).unwrap();
         initial_commit(&repo).unwrap();
         let current = env::current_dir().unwrap();
         env::set_current_dir(dir.path()).unwrap();

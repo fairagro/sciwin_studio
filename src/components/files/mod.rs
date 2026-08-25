@@ -109,13 +109,13 @@ mod tests {
     fn test_read_node_type() {
         let base = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
         let main_cwl = base
-            .join("../../testdata/hello_world/workflows/main/main.cwl")
+            .join("testdata/hello_world/workflows/main/main.cwl")
             .canonicalize()
             .expect("Test file not found");
         assert_eq!(read_node_type(main_cwl), FileType::Workflow);
 
         let calc_cwl = base
-            .join("../../testdata/hello_world/workflows/calculation/calculation.cwl")
+            .join("testdata/hello_world/workflows/calculation/calculation.cwl")
             .canonicalize()
             .expect("Test file not found");
         assert_eq!(read_node_type(calc_cwl), FileType::CommandLineTool);

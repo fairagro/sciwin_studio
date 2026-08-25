@@ -43,7 +43,7 @@ mod tests {
     #[test]
     pub fn test_get_cwl_files() {
         let base = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-        let path = format!("{}/../../testdata/hello_world", base);
+        let path = format!("{}/testdata/hello_world", base);
         let files = get_cwl_files(path);
         assert_eq!(files.len(), 3);
     }
