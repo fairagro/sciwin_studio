@@ -3,13 +3,18 @@ members = ["cargo:."]
 
 # Config for 'dist'
 [dist]
-build-command = ["dx", "bundle", "--desktop", "--release"]
+# Builds the no-admin-rights installer/app format for the current OS (AppImage
+# on Linux, per-user NSIS on Windows, .app on macOS) and hands dist a file
+# named after the package binary, since dist only knows how to archive a
+# single loose executable next to Cargo.toml. See scripts/dist-bundle.sh.
+build-command = ["bash", "scripts/dist-bundle.sh"]
 # The preferred dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.32.0"
 # CI backends to support
 ci = "github"
-# The installers to generate for each app
-installers = ["shell", "powershell"]
+# No shell/powershell installers: the artifact per-platform is already the
+# real installer/app (NSIS exe, AppImage, .app), not a bare CLI binary.
+installers = []
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = [
     "aarch64-apple-darwin",
@@ -18,10 +23,10 @@ targets = [
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
 ]
-# Path that installers should place binaries in
-install-path = "CARGO_HOME"
-# Whether to install an updater program
-install-updater = false
+# Ship the real macOS .app bundle alongside the raw binary dist also archives
+# (dist-bundle.sh creates an empty placeholder on Linux/Windows so this path
+# always exists).
+include = ["SciWIn Studio.app"]
 github-build-setup = "../build-setup.yml"
 
 [dist.github-custom-runners]
