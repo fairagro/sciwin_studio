@@ -13,7 +13,7 @@ authors = [
 
 [dependencies]
 # core
-sciwin = "2"
+sciwin = "2.0.0-beta.1"
 commonwl = "0.13"
 petgraph = "0.8.3"
 
