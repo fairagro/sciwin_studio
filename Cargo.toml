@@ -1,0 +1,62 @@
+[package]
+name = "sciwin_studio"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = [
+    "Jens Krumsieck",
+    "Antonia Leidel",
+    "Harald von Waldow",
+    "Patrick König",
+    "Xaver Stiensmeier",
+]
+
+[dependencies]
+# core
+sciwin = "2"
+commonwl = "0.13"
+petgraph = "0.8.3"
+
+# UI
+dioxus = { version = "0.7.10", features = ["router"] }
+dioxus-free-icons = { version = "0.10.0", features = [
+    "octicons",
+    "material-design-icons-maps",
+] }
+dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
+rfd = { version = "0.17.2", default-features = false, features = [
+    "xdg-portal",
+] }
+
+# parsing
+serde = "1.0.229"
+serde_json = "1.0.151"
+toml = "1.1.4"
+
+# net
+reqwest = "0.13.4"
+
+# io
+pathdiff = "0.2.3"
+ignore = "0.4.33"
+dircpy = "0.3.20"
+
+# async
+async-trait = "0.1.92"
+tokio = { version = "1.48.0", features = ["time"] }
+tokio-util = "0.7.18"
+futures-util = "0.3.32"
+
+# util
+anyhow = "1.0.104"
+secrecy = "0.10.3"
+chrono = "0.4.45"
+rust-sugiyama = "0.4.0"
+
+[dev-dependencies]
+
+[features]
+default = ["desktop"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
