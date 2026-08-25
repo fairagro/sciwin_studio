@@ -350,8 +350,10 @@ pub(crate) fn get_output_type(doc: &CWLDocument, id: &str) -> Option<CommandOutp
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
+    #[serial]
     fn test_load_workflow_graph() {
         let path = "testdata/hello_world/workflows/main/main.cwl";
         let CWLDocument::Workflow(workflow) = load_cwl_file(path, true).unwrap() else {
@@ -364,6 +366,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_load_workflow_graph_02() {
         let path = "testdata/mkdir_wf.cwl";
         let CWLDocument::Workflow(workflow) = load_cwl_file(path, true).unwrap() else {
