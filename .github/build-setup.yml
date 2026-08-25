@@ -27,5 +27,7 @@
       libssl-dev:arm64 \
       libayatana-appindicator3-dev:arm64 \
       librsvg2-dev:arm64
+- name: Install Binstall
+  uses: cargo-bins/cargo-binstall@main
 - name: Install Dioxus CLI
   run: cargo binstall dioxus-cli --force

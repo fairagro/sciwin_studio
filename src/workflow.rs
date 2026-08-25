@@ -322,13 +322,43 @@ mod tests {
     use super::*;
     use commonwl::types::CWLType;
     use dircpy::copy_dir;
-    use sciwin::repository::{Repository, initial_commit};
+    use sciwin::repository::{Config, Repository, RepositoryError, initial_commit};
     use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
     use tempfile::tempdir;
 
+    /// Ensures a `user.name`/`user.email` are configured so `git2::Repository::signature()`
+    /// succeeds on CI runners that don't have a global git identity set. Retries because
+    /// parallel test binaries can race on the same global git config file.
+    fn check_git_user() -> Result<(), RepositoryError> {
+        let mut last_err: Option<RepositoryError> = None;
+        for i in 0..5 {
+            match write_git_user() {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    last_err = Some(err);
+                    eprintln!("git config is currently being accessed. Attempt #{i}");
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+        Err(last_err.expect("last_err must be set after retries are exhausted"))
+    }
+
+    fn write_git_user() -> Result<(), RepositoryError> {
+        let mut config = Config::open_default()?;
+        if config.get_string("user.name").is_err() {
+            config.set_str("user.name", "s4n-test")?;
+        }
+        if config.get_string("user.email").is_err() {
+            config.set_str("user.email", "s4n-test@example.com")?;
+        }
+        Ok(())
+    }
+
     fn setup() -> (PathBuf, TempDir) {
+        check_git_user().unwrap();
         let dir = tempdir().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
         copy_dir("testdata/hello_world", dir.path()).unwrap();
