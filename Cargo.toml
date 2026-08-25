@@ -1,8 +1,9 @@
 [package]
 name = "sciwin_studio"
-version = "0.1.0"
+version = "1.0.0-beta.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/fairagro/sciwin_studio"
 authors = [
     "Jens Krumsieck",
     "Antonia Leidel",
@@ -68,3 +69,8 @@ default = ["desktop"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
