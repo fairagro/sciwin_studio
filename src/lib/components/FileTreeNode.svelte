@@ -41,7 +41,7 @@
 <div>
   <button
     type="button"
-    class="flex w-full items-center gap-1.5 rounded py-[3px] pr-1 text-left font-mono text-[11.5px] whitespace-nowrap text-text-2 hover:bg-border-soft hover:text-text {!entry.isDir &&
+    class="flex w-full items-center gap-1.5 rounded py-0.75 pr-1 text-left font-mono text-[11.5px] whitespace-nowrap text-text-2 hover:bg-border-soft hover:text-text {!entry.isDir &&
     entry.path === workspace.activePath
       ? 'bg-fairagro-mid-500/14 text-text'
       : ''}"
@@ -56,7 +56,7 @@
         <Folder size={13} strokeWidth={1.8} class="shrink-0 text-fairagro-mid-500" />
       {/if}
     {:else}
-      <span class="w-[11px] shrink-0"></span>
+      <span class="w-2.75 shrink-0"></span>
       <File size={13} strokeWidth={1.8} class="shrink-0 text-text-3" />
     {/if}
     <span class="truncate">{entry.name}</span>

@@ -4,12 +4,50 @@
   import { FolderOpen, RotateCw, X } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import FileTreeNode, { type FsEntry } from "./FileTreeNode.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
+
+  let showInitPrompt = $state(false);
+  let pendingProjectPath = $state<string | null>(null);
+  let initBusy = $state(false);
+  let initError = $state<string | null>(null);
 
   async function openProject() {
     const dir = await open({ directory: true, multiple: false });
-    if (typeof dir === "string") {
-      workspace.openProject(dir);
+    if (typeof dir !== "string") return;
+
+    const hasConfig = await invoke<boolean>("has_workflow_config", { path: dir });
+    if (hasConfig) {
+      workspace.openProject(dir, true);
+      return;
     }
+
+    initError = null;
+    pendingProjectPath = dir;
+    showInitPrompt = true;
+  }
+
+  async function confirmInit() {
+    if (!pendingProjectPath) return;
+    initBusy = true;
+    initError = null;
+    try {
+      await invoke("init_sciwin_project", { path: pendingProjectPath });
+      workspace.openProject(pendingProjectPath, true);
+      showInitPrompt = false;
+      pendingProjectPath = null;
+    } catch (err) {
+      initError = String(err);
+    } finally {
+      initBusy = false;
+    }
+  }
+
+  function declineInit() {
+    if (pendingProjectPath) {
+      workspace.openProject(pendingProjectPath, false);
+    }
+    showInitPrompt = false;
+    pendingProjectPath = null;
   }
 
   const sectionLabels = {
@@ -131,3 +169,15 @@
     {/if}
   </div>
 </aside>
+
+<ConfirmDialog
+  open={showInitPrompt}
+  title="Initialize SciWIn project?"
+  message="This folder doesn't have a workflow.toml yet. Initialize it as a SciWIn project (creates workflow.toml, a workflows/ folder, and a git repo if needed)? You can skip this, but some features will be unavailable until it's initialized."
+  confirmLabel="Initialize"
+  cancelLabel="Skip"
+  busy={initBusy}
+  error={initError}
+  onConfirm={confirmInit}
+  onCancel={declineInit}
+/>

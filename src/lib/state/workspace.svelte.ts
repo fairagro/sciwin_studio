@@ -9,6 +9,8 @@ export type SidebarView = "workflows" | "filesystem" | "sourcecontrol";
 class WorkspaceState {
   projectPath = $state<string | null>(null);
   projectName = $state<string | null>(null);
+  // null = not yet checked, false = user declined init; other features gate on this
+  projectHasConfig = $state<boolean | null>(null);
   tabs = $state<Tab[]>([]);
   activePath = $state<string | null>(null);
 
@@ -41,9 +43,10 @@ class WorkspaceState {
     this.terminalHeight = Math.min(560, Math.max(120, this.terminalHeight + deltaPx));
   }
 
-  openProject(path: string) {
+  openProject(path: string, hasConfig: boolean) {
     this.projectPath = path;
     this.projectName = path.split(/[\\/]/).pop() ?? path;
+    this.projectHasConfig = hasConfig;
     this.tabs = [];
     this.activePath = null;
   }
@@ -51,6 +54,7 @@ class WorkspaceState {
   closeProject() {
     this.projectPath = null;
     this.projectName = null;
+    this.projectHasConfig = null;
     this.tabs = [];
     this.activePath = null;
   }
