@@ -6,6 +6,7 @@
   import Terminal from "$lib/components/Terminal.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ResizeHandles from "$lib/components/ResizeHandles.svelte";
+  import ResizeHandle from "$lib/components/ResizeHandle.svelte";
   import { workspace } from "$lib/state/workspace.svelte";
 </script>
 
@@ -16,6 +17,7 @@
     <IconRail />
     {#if !workspace.sidebarCollapsed}
       <Sidebar />
+      <ResizeHandle orientation="vertical" onResize={(d) => workspace.resizeSidebar(d)} />
     {/if}
     <div class="flex min-w-0 flex-1 flex-col">
       <TabBar />
@@ -31,6 +33,9 @@
           </div>
         {/if}
       </main>
+      {#if workspace.terminalOpen}
+        <ResizeHandle orientation="horizontal" onResize={(d) => workspace.resizeTerminal(-d)} />
+      {/if}
       <Terminal />
     </div>
   </div>

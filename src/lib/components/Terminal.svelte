@@ -18,6 +18,7 @@
   let fitAddon: FitAddon;
   let resizeObserver: ResizeObserver;
   let unlistenOutput: (() => void) | undefined;
+  let started = false;
 
   function fitAndResize() {
     if (!term.element) return;
@@ -25,22 +26,9 @@
     invoke("pty_resize", { cols: term.cols, rows: term.rows }).catch(() => {});
   }
 
-  onMount(async () => {
-    term = new Terminal({
-      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
-      fontSize: 12,
-      theme: {
-        background: "#0d0e10",
-        foreground: "#eef0f2",
-        cursor: "#6abf5c",
-        cursorAccent: "#0d0e10",
-        selectionBackground: "#2b2e33",
-      },
-    });
-    fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.open(containerEl);
-    fitAddon.fit();
+  async function startShell() {
+    if (started) return;
+    started = true;
 
     const s4n = await invoke<S4nStatus>("check_s4n").catch(() => null);
     if (s4n && !s4n.installed) {
@@ -56,9 +44,34 @@
       term.write(`\r\nfailed to start terminal: ${err}\r\n`);
     });
 
-    listen<string>("pty-output", (event) => term.write(event.payload)).then((fn) => {
-      unlistenOutput = fn;
+    unlistenOutput = await listen<string>("pty-output", (event) => term.write(event.payload));
+  }
+
+  async function restartShell() {
+    await invoke("pty_kill").catch(() => {});
+    unlistenOutput?.();
+    unlistenOutput = undefined;
+    term.reset();
+    started = false;
+    await startShell();
+  }
+
+  onMount(() => {
+    term = new Terminal({
+      fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
+      fontSize: 12,
+      theme: {
+        background: "#0d0e10",
+        foreground: "#eef0f2",
+        cursor: "#6abf5c",
+        cursorAccent: "#0d0e10",
+        selectionBackground: "#2b2e33",
+      },
     });
+    fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(containerEl);
+    fitAddon.fit();
 
     term.onData((data) => {
       invoke("pty_write", { data }).catch(() => {});
@@ -76,6 +89,7 @@
 
   $effect(() => {
     if (workspace.terminalOpen && term) {
+      startShell();
       requestAnimationFrame(() => {
         fitAndResize();
         term.focus();
@@ -84,7 +98,10 @@
   });
 </script>
 
-<div class="flex h-44 shrink-0 flex-col border-t border-border bg-bg-panel {workspace.terminalOpen ? '' : 'hidden'}">
+<div
+  class="flex shrink-0 flex-col border-t border-border bg-bg-panel {workspace.terminalOpen ? '' : 'hidden'}"
+  style="height: {workspace.terminalHeight}px"
+>
   <div class="flex h-8 shrink-0 items-center gap-2 border-b border-border-soft px-2.5">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2">
       <path d="M4 5h16v14H4z" />
@@ -93,7 +110,25 @@
     </svg>
     <span class="font-mono text-[11px] text-text">Console</span>
     <div class="flex-1"></div>
-    <button type="button" class="rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text" title="Close panel" onclick={() => workspace.toggleTerminal()}> &times; </button>
+    <button
+      type="button"
+      class="rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
+      title="Restart terminal"
+      onclick={restartShell}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M21 12a9 9 0 1 1-3-6.7" />
+        <path d="M21 3v6h-6" />
+      </svg>
+    </button>
+    <button
+      type="button"
+      class="rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
+      title="Hide panel"
+      onclick={() => workspace.toggleTerminal()}
+    >
+      &times;
+    </button>
   </div>
   <div bind:this={containerEl} class="min-h-0 flex-1 overflow-hidden bg-bg-well p-1.5"></div>
 </div>

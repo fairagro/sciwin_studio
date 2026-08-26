@@ -14,7 +14,9 @@ class WorkspaceState {
 
   sidebarView = $state<SidebarView>("workflows");
   sidebarCollapsed = $state(false);
+  sidebarWidth = $state(248);
   terminalOpen = $state(false);
+  terminalHeight = $state(176);
 
   activeTab = $derived(this.tabs.find((t) => t.path === this.activePath) ?? null);
 
@@ -29,6 +31,14 @@ class WorkspaceState {
 
   toggleTerminal() {
     this.terminalOpen = !this.terminalOpen;
+  }
+
+  resizeSidebar(deltaPx: number) {
+    this.sidebarWidth = Math.min(480, Math.max(180, this.sidebarWidth + deltaPx));
+  }
+
+  resizeTerminal(deltaPx: number) {
+    this.terminalHeight = Math.min(560, Math.max(120, this.terminalHeight + deltaPx));
   }
 
   openProject(path: string) {

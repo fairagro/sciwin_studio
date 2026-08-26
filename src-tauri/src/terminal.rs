@@ -39,7 +39,6 @@ pub fn check_s4n() -> S4nStatus {
 pub struct PtySession {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
-    #[allow(dead_code)]
     child: Box<dyn Child + Send + Sync>,
 }
 
@@ -111,6 +110,15 @@ pub fn pty_write(state: State<PtyState>, data: String) -> Result<(), String> {
     let session = guard.as_mut().ok_or("terminal not started")?;
     session.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
     session.writer.flush().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pty_kill(state: State<PtyState>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    if let Some(mut session) = guard.take() {
+        let _ = session.child.kill();
+    }
+    Ok(())
 }
 
 #[tauri::command]
