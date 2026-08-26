@@ -1,7 +1,42 @@
 @import "tailwindcss";
 @source "./**/*.{svelte,html,ts}";
 
+:root {
+    --ground: #f7f9f8;
+    --surface: #ffffff;
+    --surface-2: #edf2f0;
+    --ink: #101d1a;
+    --ink-2: #3d4f4a;
+    --ink-3: #6b7d78;
+    --rule: #dce5e2;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ground: #0e1413;
+        --surface: #151d1b;
+        --surface-2: #1b2523;
+        --ink: #e9efed;
+        --ink-2: #a9b9b4;
+        --ink-3: #7b8b86;
+        --rule: #243130;
+    }
+}
+
+@theme inline {
+    --color-ground: var(--ground);
+    --color-surface: var(--surface);
+    --color-surface-2: var(--surface-2);
+    --color-ink: var(--ink);
+    --color-ink-2: var(--ink-2);
+    --color-ink-3: var(--ink-3);
+    --color-rule: var(--rule);
+}
+
 @theme {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", Consolas, "Liberation Mono", Menlo, monospace;
+
     --color-fairagro-mid-500: #6abf5c;
     --color-fairagro-mid-400: #87cb7c;
     --color-fairagro-mid-300: #a5d89d;
@@ -22,4 +57,8 @@
 
     --color-fairagro-red-light: #f26e5f;
     --color-fairagro-red: #973442;
+}
+
+body {
+    font-family: var(--font-sans);
 }

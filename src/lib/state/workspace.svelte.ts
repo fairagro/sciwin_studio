@@ -1,0 +1,46 @@
+export interface Tab {
+  path: string;
+  name: string;
+  dirty: boolean;
+}
+
+class WorkspaceState {
+  projectPath = $state<string | null>(null);
+  projectName = $state<string | null>(null);
+  tabs = $state<Tab[]>([]);
+  activePath = $state<string | null>(null);
+
+  activeTab = $derived(this.tabs.find((t) => t.path === this.activePath) ?? null);
+
+  openProject(path: string) {
+    this.projectPath = path;
+    this.projectName = path.split(/[\\/]/).pop() ?? path;
+    this.tabs = [];
+    this.activePath = null;
+  }
+
+  closeProject() {
+    this.projectPath = null;
+    this.projectName = null;
+    this.tabs = [];
+    this.activePath = null;
+  }
+
+  openTab(path: string, name: string) {
+    if (!this.tabs.some((t) => t.path === path)) {
+      this.tabs.push({ path, name, dirty: false });
+    }
+    this.activePath = path;
+  }
+
+  closeTab(path: string) {
+    const index = this.tabs.findIndex((t) => t.path === path);
+    if (index === -1) return;
+    this.tabs.splice(index, 1);
+    if (this.activePath === path) {
+      this.activePath = (this.tabs[index] ?? this.tabs[index - 1])?.path ?? null;
+    }
+  }
+}
+
+export const workspace = new WorkspaceState();
