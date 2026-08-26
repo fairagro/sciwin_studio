@@ -1352,6 +1352,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "borrow-or-share"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
+
+[[package]]
 name = "boxcar"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1708,10 +1714,17 @@ dependencies = [
 [[package]]
 name = "commonwl"
 version = "0.13.1"
+dependencies = [
+ "cwl_core 0.13.1",
+]
+
+[[package]]
+name = "commonwl"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a51838f1c0778d0995b3cd4a3a66dfdc5a0286ad0f2c02061a6c58a95da3ece4"
 dependencies = [
- "cwl_core",
+ "cwl_core 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cwl_engine",
  "cwl_engine_storage",
 ]
@@ -2188,6 +2201,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "cwl-lsp"
+version = "0.13.1"
+dependencies = [
+ "commonwl 0.13.1",
+ "dashmap",
+ "granit-parser",
+ "ropey",
+ "tokio",
+ "tower-lsp-server",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "cwl_core"
+version = "0.13.1"
+dependencies = [
+ "anyhow",
+ "base16ct 1.0.0",
+ "bon",
+ "cwl_salad 0.13.1",
+ "dunce",
+ "miette",
+ "oneormany",
+ "regex",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha1 0.11.0",
+ "thiserror 2.0.20",
+ "url",
+ "validator",
+]
+
+[[package]]
 name = "cwl_core"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2196,7 +2243,7 @@ dependencies = [
  "anyhow",
  "base16ct 1.0.0",
  "bon",
- "cwl_salad",
+ "cwl_salad 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "dunce",
  "miette",
  "oneormany",
@@ -2224,7 +2271,7 @@ dependencies = [
  "bon",
  "chrono",
  "crankshaft",
- "cwl_core",
+ "cwl_core 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "cwl_engine_storage",
  "dunce",
  "futures-util",
@@ -2279,13 +2326,32 @@ dependencies = [
 [[package]]
 name = "cwl_salad"
 version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40e3a2eb04b4749b638f0cf2bd2eb1390e39c1b1cd075951ac1754c6fc2cf04a"
 dependencies = [
- "cwl_salad_derive",
+ "cwl_salad_derive 0.13.1",
  "serde",
  "serde-saphyr",
  "serde_json",
+]
+
+[[package]]
+name = "cwl_salad"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40e3a2eb04b4749b638f0cf2bd2eb1390e39c1b1cd075951ac1754c6fc2cf04a"
+dependencies = [
+ "cwl_salad_derive 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+]
+
+[[package]]
+name = "cwl_salad_derive"
+version = "0.13.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -3026,6 +3092,17 @@ checksum = "a9442b5e9a7997eace4990debae01c1b69a1a601b9eeef7fada6c3f3edeff4a1"
 dependencies = [
  "cfg-if",
  "rustc_version",
+]
+
+[[package]]
+name = "fluent-uri"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc74ac4d8359ae70623506d512209619e5cf8f347124910440dbc221714b328e"
+dependencies = [
+ "borrow-or-share",
+ "ref-cast",
+ "serde",
 ]
 
 [[package]]
@@ -4701,6 +4778,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "ls-types"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "896e16b8e17d8732b9efe4d5b66cb0cc162b3023a2d8122f2aea6f7f185e0a67"
+dependencies = [
+ "bitflags 2.13.1",
+ "fluent-uri",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mailparse"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4720,6 +4810,15 @@ dependencies = [
  "log",
  "tendril",
  "web_atoms",
+]
+
+[[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
 ]
 
 [[package]]
@@ -4993,6 +5092,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6437,7 +6545,7 @@ checksum = "b8f4413a4eab15912f7f3b9a628452a6238c39d617fe7edae91af7d547a6fb83"
 dependencies = [
  "anyhow",
  "chrono",
- "commonwl",
+ "commonwl 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "dunce",
  "glob",
  "miette",
@@ -6905,6 +7013,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ropey"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93411e420bcd1a75ddd1dc3caf18c23155eda2c090631a85af21ba19e97093b5"
+dependencies = [
+ "smallvec",
+ "str_indices",
+]
+
+[[package]]
 name = "rowan"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7200,7 +7318,7 @@ dependencies = [
  "async-trait",
  "bon",
  "chrono",
- "commonwl",
+ "commonwl 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "configparser",
  "crankshaft",
  "dunce",
@@ -7240,6 +7358,7 @@ dependencies = [
 name = "sciwin_studio"
 version = "1.0.0-beta.2"
 dependencies = [
+ "cwl-lsp",
  "ignore",
  "portable-pty",
  "sciwin",
@@ -7685,6 +7804,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "shared_library"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7981,6 +8109,12 @@ dependencies = [
  "syn 2.0.119",
  "thiserror 1.0.69",
 ]
+
+[[package]]
+name = "str_indices"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d08889ec5408683408db66ad89e0e1f93dff55c73a4ccc71c427d5b277ee47e6"
 
 [[package]]
 name = "string_cache"
@@ -8653,6 +8787,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "time"
 version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8997,6 +9140,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
 
 [[package]]
+name = "tower-lsp-server"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f0e711655c89181a6bc6a2cc348131fcd9680085f5b06b6af13427a393a6e72"
+dependencies = [
+ "bytes",
+ "dashmap",
+ "futures",
+ "httparse",
+ "ls-types",
+ "memchr",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "tracing",
+]
+
+[[package]]
 name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9031,6 +9194,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -10081,6 +10274,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "valuable"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vcpkg"
