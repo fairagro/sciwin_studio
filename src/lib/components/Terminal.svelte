@@ -5,6 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
+  import { SquareTerminal, RotateCw, X } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
 
   interface S4nStatus {
@@ -103,11 +104,7 @@
   style="height: {workspace.terminalHeight}px"
 >
   <div class="flex h-8 shrink-0 items-center gap-2 border-b border-border-soft px-2.5">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2">
-      <path d="M4 5h16v14H4z" />
-      <path d="M8 9l3 3-3 3" />
-      <path d="M13 15h4" />
-    </svg>
+    <SquareTerminal size={13} strokeWidth={1.8} class="text-text-2" />
     <span class="font-mono text-[11px] text-text">Console</span>
     <div class="flex-1"></div>
     <button
@@ -116,10 +113,7 @@
       title="Restart terminal"
       onclick={restartShell}
     >
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M21 12a9 9 0 1 1-3-6.7" />
-        <path d="M21 3v6h-6" />
-      </svg>
+      <RotateCw size={12} strokeWidth={1.8} />
     </button>
     <button
       type="button"
@@ -127,7 +121,7 @@
       title="Hide panel"
       onclick={() => workspace.toggleTerminal()}
     >
-      &times;
+      <X size={12} strokeWidth={1.8} />
     </button>
   </div>
   <div bind:this={containerEl} class="min-h-0 flex-1 overflow-hidden bg-bg-well p-1.5"></div>

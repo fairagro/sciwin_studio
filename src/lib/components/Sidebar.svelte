@@ -1,5 +1,6 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
+  import { FolderOpen, X } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
 
   async function openProject() {
@@ -27,10 +28,7 @@
   style="width: {workspace.sidebarWidth}px"
 >
   <div class="flex items-center gap-2 border-b border-border-soft px-3 py-2.5">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="1.6" class="shrink-0">
-      <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
-      <path d="M14 3v6h6" />
-    </svg>
+    <FolderOpen size={14} strokeWidth={1.6} class="shrink-0 text-text-2" />
     <span class="flex-1 truncate font-mono text-xs text-text" title={workspace.projectName ?? undefined}>
       {workspace.projectName ?? "No project"}
     </span>
@@ -41,7 +39,7 @@
         title="Close project"
         onclick={() => workspace.closeProject()}
       >
-        &times;
+        <X size={12} strokeWidth={1.8} />
       </button>
     {/if}
   </div>

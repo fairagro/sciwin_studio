@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { X } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
 
   function closeTab(e: MouseEvent, path: string) {
@@ -29,7 +30,7 @@
           onclick={(e) => closeTab(e, tab.path)}
           onkeydown={(e) => e.key === "Enter" && closeTab(e as unknown as MouseEvent, tab.path)}
         >
-          &times;
+          <X size={11} strokeWidth={1.8} />
         </span>
       </button>
     {/each}
