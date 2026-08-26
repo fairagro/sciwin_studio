@@ -5,8 +5,24 @@
   import { onMount, onDestroy } from "svelte";
   import { workspace } from "$lib/state/workspace.svelte";
 
+  const BINARY_EXTENSIONS = new Set([
+    "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tiff", "tif", "avif", "heic",
+    "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "jar",
+    "exe", "dll", "so", "dylib", "bin", "o", "a", "class", "wasm",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "mp3", "mp4", "wav", "ogg", "mov", "avi", "mkv", "flac", "webm",
+    "ttf", "otf", "woff", "woff2", "eot",
+    "db", "sqlite", "sqlite3", "pyc", "dat", "iso", "dmg",
+  ]);
+
+  function isLikelyBinary(name: string): boolean {
+    const ext = name.split(".").pop()?.toLowerCase() ?? "";
+    return BINARY_EXTENSIONS.has(ext);
+  }
+
   let containerEl: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor;
+  let unsupported = $state(false);
   const models = new Map<string, monaco.editor.ITextModel>();
 
   function languageFor(name: string): string {
@@ -41,7 +57,15 @@
     let model = models.get(path);
     if (model) return model;
 
-    const content = await invoke<string>("read_file", { path }).catch(() => "");
+    let content: string;
+    try {
+      content = await invoke<string>("read_file", { path });
+    } catch {
+      // binary content, or the read genuinely failed - never fabricate an
+      // empty writable model, since saving it would blank the real file
+      return null;
+    }
+
     model = monaco.editor.createModel(content, languageFor(name), monaco.Uri.file(path));
     model.onDidChangeContent(() => {
       const tab = workspace.tabs.find((t) => t.path === path);
@@ -102,7 +126,18 @@
   $effect(() => {
     const tab = workspace.activeTab;
     if (!tab || !editor) return;
+
+    if (isLikelyBinary(tab.name)) {
+      unsupported = true;
+      return;
+    }
+
     modelFor(tab.path, tab.name).then((model) => {
+      if (!model) {
+        unsupported = true;
+        return;
+      }
+      unsupported = false;
       if (editor.getModel() !== model) editor.setModel(model);
       requestAnimationFrame(() => editor.layout());
     });
@@ -119,4 +154,11 @@
   });
 </script>
 
-<div bind:this={containerEl} class="h-full w-full"></div>
+<div class="relative h-full w-full">
+  <div bind:this={containerEl} class="h-full w-full"></div>
+  {#if unsupported}
+    <div class="absolute inset-0 flex items-center justify-center bg-bg font-mono text-sm text-text-3">
+      This file type isn't supported for editing.
+    </div>
+  {/if}
+</div>

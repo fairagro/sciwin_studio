@@ -86,7 +86,14 @@ pub fn get_cwl_files(root: String) -> Vec<FsEntry> {
 
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|e| e.to_string())
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    // NUL byte is the standard binary-content heuristic (same one git uses);
+    // catches binary files an editor should refuse rather than silently
+    // read as empty/garbled text and risk clobbering on save.
+    if bytes.contains(&0) {
+        return Err("binary".to_string());
+    }
+    String::from_utf8(bytes).map_err(|_| "binary".to_string())
 }
 
 #[tauri::command]

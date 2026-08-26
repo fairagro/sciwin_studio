@@ -6,10 +6,20 @@
     e.stopPropagation();
     workspace.closeTab(path);
   }
+
+  function onWheel(e: WheelEvent) {
+    const el = e.currentTarget as HTMLDivElement;
+    if (el.scrollWidth <= el.clientWidth) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  }
 </script>
 
 {#if workspace.tabs.length > 0}
-  <div class="flex h-10.5 shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-bg-panel px-2.5">
+  <div
+    class="tab-row flex h-10.5 shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-bg-panel px-2.5"
+    onwheel={onWheel}
+  >
     {#each workspace.tabs as tab (tab.path)}
       {@const active = tab.path === workspace.activePath}
       <button
@@ -36,3 +46,20 @@
     {/each}
   </div>
 {/if}
+
+<style>
+  .tab-row {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .tab-row::-webkit-scrollbar {
+    height: 6px;
+  }
+  .tab-row::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+  }
+  .tab-row::-webkit-scrollbar-track {
+    background: transparent;
+  }
+</style>
