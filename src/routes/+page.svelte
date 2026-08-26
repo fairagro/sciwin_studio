@@ -31,9 +31,7 @@
           </div>
         {/if}
       </main>
-      {#if workspace.terminalOpen}
-        <Terminal />
-      {/if}
+      <Terminal />
     </div>
   </div>
   <StatusBar />
