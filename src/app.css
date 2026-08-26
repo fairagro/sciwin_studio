@@ -1,42 +1,63 @@
 @import "tailwindcss";
 @source "./**/*.{svelte,html,ts}";
 
-:root {
-    --ground: #f7f9f8;
-    --surface: #ffffff;
-    --surface-2: #edf2f0;
-    --ink: #101d1a;
-    --ink-2: #3d4f4a;
-    --ink-3: #6b7d78;
-    --rule: #dce5e2;
-}
+/* Self-hosted fonts (no CDN) — see @fontsource packages in package.json */
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --ground: #0e1413;
-        --surface: #151d1b;
-        --surface-2: #1b2523;
-        --ink: #e9efed;
-        --ink-2: #a9b9b4;
-        --ink-3: #7b8b86;
-        --rule: #243130;
-    }
+:root {
+    /* UI Direction palette */
+    --bg: #121316;
+    --bg-panel: #1b1d21;
+    --bg-surface: #202226;
+    --bg-well: #0d0e10;
+    --border: #2b2e33;
+    --border-soft: #24262a;
+    --text: #eef0f2;
+    --text-2: #9aa0a8;
+    --text-3: #6b7078;
+
+    --green-hdr: #3f7a3a;
+    --teal-hdr: #0f8a78;
+    --blue-line: #6b93e0;
+    --blue-hdr: #3f6ab3;
+    --red-line: #f0806f;
+    --red-hdr: #7a2a36;
 }
 
 @theme inline {
-    --color-ground: var(--ground);
-    --color-surface: var(--surface);
-    --color-surface-2: var(--surface-2);
-    --color-ink: var(--ink);
-    --color-ink-2: var(--ink-2);
-    --color-ink-3: var(--ink-3);
-    --color-rule: var(--rule);
+    --color-bg: var(--bg);
+    --color-bg-panel: var(--bg-panel);
+    --color-bg-surface: var(--bg-surface);
+    --color-bg-well: var(--bg-well);
+    --color-border: var(--border);
+    --color-border-soft: var(--border-soft);
+    --color-text: var(--text);
+    --color-text-2: var(--text-2);
+    --color-text-3: var(--text-3);
+
+    --color-green-hdr: var(--green-hdr);
+    --color-teal-hdr: var(--teal-hdr);
+    --color-blue-line: var(--blue-line);
+    --color-blue-hdr: var(--blue-hdr);
+    --color-red-line: var(--red-line);
+    --color-red-hdr: var(--red-hdr);
 }
 
 @theme {
-    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --font-mono: ui-monospace, "Cascadia Code", "Segoe UI Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+    --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 
+    /* fairagro-mid-500 (#6abf5c) and fairagro-dark-500 (#0f9884) double as the
+       UI Direction's --green / --teal accents */
     --color-fairagro-mid-500: #6abf5c;
     --color-fairagro-mid-400: #87cb7c;
     --color-fairagro-mid-300: #a5d89d;
@@ -61,4 +82,15 @@
 
 body {
     font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
 }

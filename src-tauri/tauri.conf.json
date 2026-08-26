@@ -15,7 +15,8 @@
         "title": "SciWIn-Studio",
         "width": 1270,
         "height": 720,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "decorations": false
       }
     ],
     "security": {
