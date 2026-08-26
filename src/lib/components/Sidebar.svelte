@@ -1,7 +1,9 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { FolderOpen, X } from "@lucide/svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { FolderOpen, RotateCw, X } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
+  import FileTreeNode, { type FsEntry } from "./FileTreeNode.svelte";
 
   async function openProject() {
     const dir = await open({ directory: true, multiple: false });
@@ -16,11 +18,43 @@
     sourcecontrol: "Source Control",
   } as const;
 
-  const comingSoon = {
-    workflows: "File tree coming soon.",
-    filesystem: "Filesystem browser coming soon.",
-    sourcecontrol: "Source control panel coming soon.",
-  } as const;
+  let workflowEntries = $state<FsEntry[] | null>(null);
+  let filesystemEntries = $state<FsEntry[] | null>(null);
+  let loadingWorkflows = $state(false);
+  let loadingFilesystem = $state(false);
+  let lastPath: string | null = null;
+
+  function reloadCurrentView() {
+    if (workspace.sidebarView === "workflows") workflowEntries = null;
+    if (workspace.sidebarView === "filesystem") filesystemEntries = null;
+  }
+
+  $effect(() => {
+    const path = workspace.projectPath;
+    const view = workspace.sidebarView;
+
+    if (path !== lastPath) {
+      lastPath = path;
+      workflowEntries = null;
+      filesystemEntries = null;
+    }
+
+    if (!path) return;
+
+    if (view === "workflows" && workflowEntries === null && !loadingWorkflows) {
+      loadingWorkflows = true;
+      invoke<FsEntry[]>("get_cwl_files", { root: path })
+        .then((r) => (workflowEntries = r))
+        .catch(() => (workflowEntries = []))
+        .finally(() => (loadingWorkflows = false));
+    } else if (view === "filesystem" && filesystemEntries === null && !loadingFilesystem) {
+      loadingFilesystem = true;
+      invoke<FsEntry[]>("list_dir", { path })
+        .then((r) => (filesystemEntries = r))
+        .catch(() => (filesystemEntries = []))
+        .finally(() => (loadingFilesystem = false));
+    }
+  });
 </script>
 
 <aside
@@ -44,15 +78,45 @@
     {/if}
   </div>
 
-  {#if workspace.projectPath}
-    <div class="px-3 pt-2.5 pb-1">
-      <span class="font-mono text-[10px] tracking-widest text-text-3 uppercase">{sectionLabels[workspace.sidebarView]}</span>
+  {#if workspace.projectPath && workspace.sidebarView !== "sourcecontrol"}
+    <div class="flex items-center gap-1 px-3 pt-2.5 pb-1">
+      <span class="flex-1 font-mono text-[10px] tracking-widest text-text-3 uppercase">{sectionLabels[workspace.sidebarView]}</span>
+      <button
+        type="button"
+        class="shrink-0 rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
+        title="Reload"
+        onclick={reloadCurrentView}
+      >
+        <RotateCw size={11} strokeWidth={1.8} />
+      </button>
     </div>
   {/if}
 
-  <div class="flex-1 overflow-y-auto p-2">
+  <div class="flex-1 overflow-y-auto py-1">
     {#if workspace.projectPath}
-      <p class="px-1 font-mono text-[11px] text-text-3">{comingSoon[workspace.sidebarView]}</p>
+      {#if workspace.sidebarView === "workflows"}
+        {#if loadingWorkflows}
+          <p class="px-3 font-mono text-[11px] text-text-3">Loading...</p>
+        {:else if workflowEntries && workflowEntries.length > 0}
+          {#each workflowEntries as entry (entry.path)}
+            <FileTreeNode {entry} depth={0} lazy={false} />
+          {/each}
+        {:else}
+          <p class="px-3 font-mono text-[11px] text-text-3">No .cwl files found.</p>
+        {/if}
+      {:else if workspace.sidebarView === "filesystem"}
+        {#if loadingFilesystem}
+          <p class="px-3 font-mono text-[11px] text-text-3">Loading...</p>
+        {:else if filesystemEntries && filesystemEntries.length > 0}
+          {#each filesystemEntries as entry (entry.path)}
+            <FileTreeNode {entry} depth={0} lazy={true} />
+          {/each}
+        {:else}
+          <p class="px-3 font-mono text-[11px] text-text-3">Empty folder.</p>
+        {/if}
+      {:else}
+        <p class="px-3 font-mono text-[11px] text-text-3">Source control panel coming soon.</p>
+      {/if}
     {:else}
       <div class="flex flex-col items-center gap-3 px-2 pt-12 text-center">
         <p class="font-mono text-[11px] text-text-3">Open a folder to get started</p>
