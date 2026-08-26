@@ -35,7 +35,7 @@
   <AlertDialog.Portal>
     <AlertDialog.Overlay class="fixed inset-0 z-40 bg-black/60" />
     <AlertDialog.Content
-      class="fixed top-1/2 left-1/2 z-50 w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-bg-surface text-text shadow-2xl"
+      class="fixed top-1/2 left-1/2 z-50 w-95 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-bg-surface text-text shadow-2xl"
     >
       <div class="flex items-center border-b border-border-soft px-4 py-3.5">
         <AlertDialog.Title class="font-display flex-1 text-[15px] font-semibold text-text">{title}</AlertDialog.Title>
