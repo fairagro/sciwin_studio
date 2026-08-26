@@ -1,8 +1,10 @@
 mod files;
+mod lsp;
 mod project;
 mod terminal;
 
 use files::{get_cwl_files, list_dir, read_file, write_file};
+use lsp::lsp_send;
 use project::{has_workflow_config, init_sciwin_project};
 use terminal::{check_s4n, pty_kill, pty_resize, pty_spawn, pty_write, PtyState};
 
@@ -18,6 +20,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState::default())
+        .setup(|app| {
+            lsp::init(app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             pty_spawn,
@@ -30,7 +36,8 @@ pub fn run() {
             read_file,
             write_file,
             has_workflow_config,
-            init_sciwin_project
+            init_sciwin_project,
+            lsp_send
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -25,7 +25,8 @@
     "bits-ui": "^2.19.0",
     "monaco-editor": "^0.56.0",
     "monaco-languageclient": "^10.7.0",
-    "vscode-rpc": "^0.13.1"
+    "vscode-jsonrpc": "^9.0.1",
+    "vscode-languageserver-protocol": "^3.18.2"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",
