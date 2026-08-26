@@ -1,8 +1,6 @@
+use ignore::WalkBuilder;
 use serde::Serialize;
-use std::fs;
 use std::path::{Path, PathBuf};
-
-const SKIP_DIRS: &[&str] = &[".git", "node_modules", "target", "__pycache__", ".sciwin"];
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -14,17 +12,18 @@ pub struct FsEntry {
     children: Option<Vec<FsEntry>>,
 }
 
-fn read_sorted_dir(dir: &Path) -> std::io::Result<Vec<(String, PathBuf, bool)>> {
-    let mut entries: Vec<(String, PathBuf, bool)> = fs::read_dir(dir)?
+/// One directory level, honoring .gitignore / .git/info/exclude / the global
+/// gitignore and skipping hidden entries, same as `git status` would.
+fn read_sorted_dir(dir: &Path) -> Vec<(String, PathBuf, bool)> {
+    let mut entries: Vec<(String, PathBuf, bool)> = WalkBuilder::new(dir)
+        .max_depth(Some(1))
+        .build()
         .filter_map(|e| e.ok())
+        .filter(|e| e.depth() > 0)
         .filter_map(|e| {
-            let path = e.path();
+            let is_dir = e.file_type()?.is_dir();
             let name = e.file_name().to_string_lossy().into_owned();
-            let is_dir = path.is_dir();
-            if is_dir && SKIP_DIRS.contains(&name.as_str()) {
-                return None;
-            }
-            Some((name, path, is_dir))
+            Some((name, e.into_path(), is_dir))
         })
         .collect();
 
@@ -34,14 +33,13 @@ fn read_sorted_dir(dir: &Path) -> std::io::Result<Vec<(String, PathBuf, bool)>> 
         _ => a.0.to_lowercase().cmp(&b.0.to_lowercase()),
     });
 
-    Ok(entries)
+    entries
 }
 
 /// Lists one directory level. Used by the Filesystem view, which expands lazily.
 #[tauri::command]
-pub fn list_dir(path: String) -> Result<Vec<FsEntry>, String> {
-    let entries = read_sorted_dir(&PathBuf::from(path)).map_err(|e| e.to_string())?;
-    Ok(entries
+pub fn list_dir(path: String) -> Vec<FsEntry> {
+    read_sorted_dir(Path::new(&path))
         .into_iter()
         .map(|(name, path, is_dir)| FsEntry {
             name,
@@ -49,16 +47,15 @@ pub fn list_dir(path: String) -> Result<Vec<FsEntry>, String> {
             is_dir,
             children: None,
         })
-        .collect())
+        .collect()
 }
 
-fn walk_cwl(dir: &Path) -> std::io::Result<Vec<FsEntry>> {
-    let entries = read_sorted_dir(dir)?;
+fn walk_cwl(dir: &Path) -> Vec<FsEntry> {
     let mut out = Vec::new();
 
-    for (name, path, is_dir) in entries {
+    for (name, path, is_dir) in read_sorted_dir(dir) {
         if is_dir {
-            let children = walk_cwl(&path)?;
+            let children = walk_cwl(&path);
             if !children.is_empty() {
                 out.push(FsEntry {
                     name,
@@ -77,12 +74,12 @@ fn walk_cwl(dir: &Path) -> std::io::Result<Vec<FsEntry>> {
         }
     }
 
-    Ok(out)
+    out
 }
 
 /// Recursively finds every .cwl file, pruning directories that don't contain one.
 /// Used by the Workflows view.
 #[tauri::command]
-pub fn get_cwl_files(root: String) -> Result<Vec<FsEntry>, String> {
-    walk_cwl(&PathBuf::from(root)).map_err(|e| e.to_string())
+pub fn get_cwl_files(root: String) -> Vec<FsEntry> {
+    walk_cwl(Path::new(&root))
 }
