@@ -171,7 +171,7 @@
 </aside>
 
 <ConfirmDialog
-  open={showInitPrompt}
+  bind:open={showInitPrompt}
   title="Initialize SciWIn project?"
   message="This folder doesn't have a workflow.toml yet. Initialize it as a SciWIn project (creates workflow.toml, a workflows/ folder, and a git repo if needed)? You can skip this, but some features will be unavailable until it's initialized."
   confirmLabel="Initialize"
