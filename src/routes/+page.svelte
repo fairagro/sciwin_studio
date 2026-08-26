@@ -3,6 +3,7 @@
   import IconRail from "$lib/components/IconRail.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
+  import Editor from "$lib/components/Editor.svelte";
   import Terminal from "$lib/components/Terminal.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ResizeHandles from "$lib/components/ResizeHandles.svelte";
@@ -22,12 +23,13 @@
     <div class="flex min-w-0 flex-1 flex-col">
       <TabBar />
       <main
-        class="flex-1 overflow-auto"
+        class="relative flex-1 overflow-hidden"
         style="background-image: radial-gradient(circle, var(--border-soft) 1px, transparent 1px); background-size: 22px 22px;"
       >
-        {#if workspace.activeTab}
-          <div class="p-4 font-mono text-sm text-text-2">Editor for {workspace.activeTab.path} goes here.</div>
-        {:else}
+        <div class="h-full w-full {workspace.activeTab ? '' : 'hidden'}">
+          <Editor />
+        </div>
+        {#if !workspace.activeTab}
           <div class="flex h-full items-center justify-center font-mono text-sm text-text-3">
             {workspace.projectPath ? "Select a file to begin editing" : "Open a folder to get started"}
           </div>

@@ -2,7 +2,7 @@ mod files;
 mod project;
 mod terminal;
 
-use files::{get_cwl_files, list_dir};
+use files::{get_cwl_files, list_dir, read_file, write_file};
 use project::{has_workflow_config, init_sciwin_project};
 use terminal::{check_s4n, pty_kill, pty_resize, pty_spawn, pty_write, PtyState};
 
@@ -27,6 +27,8 @@ pub fn run() {
             check_s4n,
             list_dir,
             get_cwl_files,
+            read_file,
+            write_file,
             has_workflow_config,
             init_sciwin_project
         ])
