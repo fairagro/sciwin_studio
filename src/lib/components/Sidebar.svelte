@@ -8,6 +8,18 @@
       workspace.openProject(dir);
     }
   }
+
+  const sectionLabels = {
+    workflows: "Workflows",
+    filesystem: "Filesystem",
+    sourcecontrol: "Source Control",
+  } as const;
+
+  const comingSoon = {
+    workflows: "File tree coming soon.",
+    filesystem: "Filesystem browser coming soon.",
+    sourcecontrol: "Source control panel coming soon.",
+  } as const;
 </script>
 
 <aside class="flex w-62 shrink-0 flex-col border-r border-border bg-bg-panel select-none">
@@ -31,9 +43,15 @@
     {/if}
   </div>
 
+  {#if workspace.projectPath}
+    <div class="px-3 pt-2.5 pb-1">
+      <span class="font-mono text-[10px] tracking-widest text-text-3 uppercase">{sectionLabels[workspace.sidebarView]}</span>
+    </div>
+  {/if}
+
   <div class="flex-1 overflow-y-auto p-2">
     {#if workspace.projectPath}
-      <p class="px-1 font-mono text-[11px] text-text-3">File tree coming soon.</p>
+      <p class="px-1 font-mono text-[11px] text-text-3">{comingSoon[workspace.sidebarView]}</p>
     {:else}
       <div class="flex flex-col items-center gap-3 px-2 pt-12 text-center">
         <p class="font-mono text-[11px] text-text-3">Open a folder to get started</p>

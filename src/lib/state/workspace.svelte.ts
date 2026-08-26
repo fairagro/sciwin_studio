@@ -4,13 +4,32 @@ export interface Tab {
   dirty: boolean;
 }
 
+export type SidebarView = "workflows" | "filesystem" | "sourcecontrol";
+
 class WorkspaceState {
   projectPath = $state<string | null>(null);
   projectName = $state<string | null>(null);
   tabs = $state<Tab[]>([]);
   activePath = $state<string | null>(null);
 
+  sidebarView = $state<SidebarView>("workflows");
+  sidebarCollapsed = $state(false);
+  terminalOpen = $state(false);
+
   activeTab = $derived(this.tabs.find((t) => t.path === this.activePath) ?? null);
+
+  selectSidebarView(view: SidebarView) {
+    if (this.sidebarView === view && !this.sidebarCollapsed) {
+      this.sidebarCollapsed = true;
+    } else {
+      this.sidebarView = view;
+      this.sidebarCollapsed = false;
+    }
+  }
+
+  toggleTerminal() {
+    this.terminalOpen = !this.terminalOpen;
+  }
 
   openProject(path: string) {
     this.projectPath = path;
