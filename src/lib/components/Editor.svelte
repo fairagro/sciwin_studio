@@ -4,6 +4,11 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
   import { workspace } from "$lib/state/workspace.svelte";
+  import { notifyDidChange, notifyDidClose, notifyDidOpen, setDiagnosticsHandler } from "$lib/lsp/connection";
+
+  function isCwl(name: string): boolean {
+    return name.toLowerCase().endsWith(".cwl");
+  }
 
   const BINARY_EXTENSIONS = new Set([
     "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "tiff", "tif", "avif", "heic",
@@ -53,6 +58,8 @@
     }
   }
 
+  const changeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   async function modelFor(path: string, name: string) {
     let model = models.get(path);
     if (model) return model;
@@ -67,9 +74,21 @@
     }
 
     model = monaco.editor.createModel(content, languageFor(name), monaco.Uri.file(path));
+    const uri = model.uri.toString();
+    const cwl = isCwl(name);
+
+    if (cwl) notifyDidOpen(uri, "yaml", content);
+
     model.onDidChangeContent(() => {
       const tab = workspace.tabs.find((t) => t.path === path);
       if (tab) tab.dirty = true;
+
+      if (!cwl) return;
+      clearTimeout(changeTimers.get(path));
+      changeTimers.set(
+        path,
+        setTimeout(() => notifyDidChange(uri, model!.getValue()), 300),
+      );
     });
     models.set(path, model);
     return model;
@@ -116,6 +135,11 @@
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
+
+    setDiagnosticsHandler((uri, markers) => {
+      const model = monaco.editor.getModel(monaco.Uri.parse(uri));
+      if (model) monaco.editor.setModelMarkers(model, "cwl-lsp", markers);
+    });
   });
 
   onDestroy(() => {
@@ -147,6 +171,9 @@
     const openPaths = new Set(workspace.tabs.map((t) => t.path));
     for (const [path, model] of models) {
       if (!openPaths.has(path)) {
+        clearTimeout(changeTimers.get(path));
+        changeTimers.delete(path);
+        if (isCwl(path)) notifyDidClose(model.uri.toString());
         model.dispose();
         models.delete(path);
       }
