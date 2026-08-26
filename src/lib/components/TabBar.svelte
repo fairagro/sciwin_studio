@@ -8,7 +8,7 @@
 </script>
 
 {#if workspace.tabs.length > 0}
-  <div class="flex h-[42px] shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-bg-panel px-2.5">
+  <div class="flex h-10.5 shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-bg-panel px-2.5">
     {#each workspace.tabs as tab (tab.path)}
       {@const active = tab.path === workspace.activePath}
       <button

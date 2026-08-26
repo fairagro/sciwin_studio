@@ -14,7 +14,7 @@
   <div class="flex gap-1">
     <button
       type="button"
-      class="flex h-[26px] w-[26px] items-center justify-center rounded text-text-2 hover:bg-border-soft hover:text-text"
+      class="flex h-6.5 w-6.5 items-center justify-center rounded text-text-2 hover:bg-border-soft hover:text-text"
       title="Minimize"
       onclick={() => appWindow.minimize()}
     >
@@ -24,7 +24,7 @@
     </button>
     <button
       type="button"
-      class="flex h-[26px] w-[26px] items-center justify-center rounded text-text-2 hover:bg-border-soft hover:text-text"
+      class="flex h-6.5 w-6.5 items-center justify-center rounded text-text-2 hover:bg-border-soft hover:text-text"
       title="Maximize"
       onclick={() => appWindow.toggleMaximize()}
     >
@@ -34,7 +34,7 @@
     </button>
     <button
       type="button"
-      class="flex h-[26px] w-[26px] items-center justify-center rounded text-text-2 hover:bg-fairagro-red hover:text-white"
+      class="flex h-6.5 w-6.5 items-center justify-center rounded text-text-2 hover:bg-fairagro-red hover:text-white"
       title="Close"
       onclick={() => appWindow.close()}
     >

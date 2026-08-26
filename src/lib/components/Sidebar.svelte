@@ -10,7 +10,7 @@
   }
 </script>
 
-<aside class="flex w-[248px] shrink-0 flex-col border-r border-border bg-bg-panel select-none">
+<aside class="flex w-62 shrink-0 flex-col border-r border-border bg-bg-panel select-none">
   <div class="flex items-center gap-2 border-b border-border-soft px-3 py-2.5">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="1.6" class="shrink-0">
       <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
