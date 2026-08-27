@@ -54,8 +54,13 @@ pub enum MutationError {
 
 impl From<sciwin::authoring::AuthoringError> for MutationError {
     fn from(e: sciwin::authoring::AuthoringError) -> Self {
-        MutationError::InvalidConnection {
-            reason: e.to_string(),
+        match e {
+            sciwin::authoring::AuthoringError::IncompatibleType { message } => {
+                MutationError::IncompatibleTypes { reason: message }
+            }
+            e => MutationError::InvalidConnection {
+                reason: e.to_string(),
+            },
         }
     }
 }
@@ -462,6 +467,55 @@ steps:
         let from = endpoint(NodeKind::Step, "producer", "out");
         let to = endpoint(NodeKind::Step, "consumer", "y");
         let result = connect_workflow_nodes_impl(&path, &revision, false, &from, &to);
+
+        assert!(matches!(
+            result,
+            Err(MutationError::IncompatibleTypes { .. })
+        ));
+    }
+    #[test]
+    fn connect_input_to_step_refuses_type_mismatch_with_existing_input() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("consumer.cwl"),
+            r"
+cwlVersion: v1.2
+class: CommandLineTool
+inputs:
+- id: y
+  type: File
+outputs:
+- id: done
+  type: File
+baseCommand: echo
+",
+        )
+        .unwrap();
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+- id: image
+  type: string
+outputs: []
+steps:
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let result = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Input, "image", "image"),
+            &endpoint(NodeKind::Step, "consumer", "y"),
+        );
 
         assert!(matches!(
             result,
