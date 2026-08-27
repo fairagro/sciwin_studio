@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection } from "@xyflow/svelte";
+  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection, type EdgeEvents } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -9,6 +9,7 @@
   import { connectWorkflowNodes, disconnectWorkflowNodes } from "$lib/graph/mutation";
   import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type MutationError, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
   import WorkflowNode from "./WorkflowNode.svelte";
+  import ContextMenu from "./context-menu/Edge.svelte";
 
   const nodeTypes: NodeTypes = { workflow: WorkflowNode };
 
@@ -21,6 +22,44 @@
   let mutationError = $state<MutationError | null>(null);
 
   const isEditorDirty = $derived(workspace.activeTab?.viewMode === "graph" && workspace.activeTab?.dirty === true);
+
+  let edge_menu: {
+    id: string;
+    top?: number;
+    left?: number;
+    right?: number;
+    bottom?: number;
+  } | null = $state(null);
+  let clientWidth: number = $state(0);
+  let clientHeight: number = $state(0);
+  let containerEl: HTMLDivElement | undefined = $state();
+
+  const handleEdgeContextMenu = ({ edge, event }: { edge: Edge; event: MouseEvent }) => {
+    // Prevent native context menu from showing
+    event.preventDefault();
+
+    // event.clientX/Y are viewport-relative, but the menu is positioned
+    // relative to this container (offset by the sidebar/titlebar) -- convert
+    // before comparing against clientWidth/clientHeight, or the menu lands
+    // wherever the container happens to be offset from the window origin.
+    const rect = containerEl?.getBoundingClientRect();
+    const x = event.clientX - (rect?.left ?? 0);
+    const y = event.clientY - (rect?.top ?? 0);
+
+    // Calculate position of the context menu. We want to make sure it
+    // doesn't get positioned off-screen.
+    edge_menu = {
+      id: edge.id,
+      top: y < clientHeight - 200 ? y : undefined,
+      left: x < clientWidth - 200 ? x : undefined,
+      right: x >= clientWidth - 200 ? clientWidth - x : undefined,
+      bottom: y >= clientHeight - 200 ? clientHeight - y : undefined,
+    };
+  };
+
+  function handlePaneClick() {
+    edge_menu = null;
+  }
 
   let mutationErrorTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
@@ -106,15 +145,7 @@
       // Svelte Flow's Handle component adds this edge to the bound array
       // the instant the drag completes, before onconnect even runs -- undo
       // that on refusal, or it sits there rendered until the next reload.
-      edges = edges.filter(
-        (e) =>
-          !(
-            e.source === connection.source &&
-            e.target === connection.target &&
-            e.sourceHandle === connection.sourceHandle &&
-            e.targetHandle === connection.targetHandle
-          )
-      );
+      edges = edges.filter((e) => !(e.source === connection.source && e.target === connection.target && e.sourceHandle === connection.sourceHandle && e.targetHandle === connection.targetHandle));
     }
   }
 
@@ -146,13 +177,16 @@
   }
 </script>
 
-<div class="relative h-full w-full">
+<div class="relative h-full w-full" bind:this={containerEl} bind:clientWidth bind:clientHeight>
   <SvelteFlow
     bind:nodes
     bind:edges
     {nodeTypes}
     {isValidConnection}
     onconnect={handleConnect}
+    onpaneclick={handlePaneClick}
+    onpointerdown={handlePaneClick}
+    onedgecontextmenu={handleEdgeContextMenu}
     onbeforedelete={handleBeforeDelete}
     nodesConnectable={!isEditorDirty}
     deleteKey={["Backspace", "Delete"]}
@@ -160,6 +194,9 @@
     colorMode="dark"
   >
     <Background bgColor="var(--color-bg)" patternColor="var(--color-border-soft)" gap={22} size={1} />
+    {#if edge_menu}
+      <ContextMenu onclick={handlePaneClick} id={edge_menu.id} top={edge_menu.top} left={edge_menu.left} right={edge_menu.right} bottom={edge_menu.bottom} />
+    {/if}
     <Controls />
     <MiniMap bgColor="var(--color-bg-panel)" maskColor="rgba(18, 19, 22, 0.65)" />
   </SvelteFlow>
