@@ -4,18 +4,25 @@ import {
   AbstractMessageReader,
   AbstractMessageWriter,
   createMessageConnection,
+  DidChangeTextDocumentNotification,
+  DidCloseTextDocumentNotification,
+  DidOpenTextDocumentNotification,
+  DocumentFormattingRequest,
+  DocumentSymbolRequest,
+  InitializeRequest,
+  InitializedNotification,
+  PublishDiagnosticsNotification,
+  SemanticTokensRequest,
   type DataCallback,
+  type Diagnostic,
   type Disposable,
   type Message,
   type MessageConnection,
-} from "vscode-jsonrpc/browser";
-import type { Diagnostic, Range, SemanticTokensLegend, SymbolInformation, TextEdit } from "vscode-languageserver-types";
-
-
-interface PublishDiagnosticsParams {
-  uri: string;
-  diagnostics: Diagnostic[];
-}
+  type Range,
+  type SemanticTokensLegend,
+  type SymbolInformation,
+  type TextEdit,
+} from "vscode-languageserver-protocol/browser";
 
 /** LSP positions/ranges are 0-indexed; Monaco's are 1-indexed. */
 export function toMonacoRange(range: Range) {
@@ -110,16 +117,10 @@ export function setDiagnosticsHandler(handler: (uri: string, markers: ReturnType
 
 let semanticTokensLegend: SemanticTokensLegend | null = null;
 
-interface InitializeResult {
-  capabilities?: {
-    semanticTokensProvider?: { legend?: SemanticTokensLegend };
-  };
-}
-
 async function connect(): Promise<MessageConnection> {
   const reader = new TauriMessageReader();
   const connection = createMessageConnection(reader, new TauriMessageWriter());
-  connection.onNotification("textDocument/publishDiagnostics", (params: PublishDiagnosticsParams) => {
+  connection.onNotification(PublishDiagnosticsNotification.type, (params) => {
     onDiagnostics?.(params.uri, params.diagnostics);
   });
   connection.onError(([error]) => console.error("[lsp] connection error", error));
@@ -128,13 +129,13 @@ async function connect(): Promise<MessageConnection> {
   connection.listen();
   await reader.ready;
 
-  const result = await connection.sendRequest<InitializeResult>("initialize", {
+  const result = await connection.sendRequest(InitializeRequest.type, {
     processId: null,
     rootUri: null,
     capabilities: {},
   });
-  semanticTokensLegend = result.capabilities?.semanticTokensProvider?.legend ?? null;
-  connection.sendNotification("initialized", {});
+  semanticTokensLegend = result.capabilities.semanticTokensProvider?.legend ?? null;
+  connection.sendNotification(InitializedNotification.type, {});
 
   return connection;
 }
@@ -156,7 +157,7 @@ export async function getSemanticTokensLegend(): Promise<SemanticTokensLegend | 
 export async function notifyDidOpen(uri: string, languageId: string, text: string) {
   try {
     const connection = await getConnection();
-    connection.sendNotification("textDocument/didOpen", {
+    connection.sendNotification(DidOpenTextDocumentNotification.type, {
       textDocument: { uri, languageId, version: 1, text },
     });
   } catch (e) {
@@ -171,7 +172,7 @@ export async function notifyDidChange(uri: string, text: string) {
     const connection = await getConnection();
     const version = (versions.get(uri) ?? 1) + 1;
     versions.set(uri, version);
-    connection.sendNotification("textDocument/didChange", {
+    connection.sendNotification(DidChangeTextDocumentNotification.type, {
       textDocument: { uri, version },
       contentChanges: [{ text }],
     });
@@ -184,7 +185,7 @@ export async function notifyDidClose(uri: string) {
   try {
     const connection = await getConnection();
     versions.delete(uri);
-    connection.sendNotification("textDocument/didClose", {
+    connection.sendNotification(DidCloseTextDocumentNotification.type, {
       textDocument: { uri },
     });
   } catch (e) {
@@ -195,7 +196,7 @@ export async function notifyDidClose(uri: string) {
 export async function requestFormatting(uri: string, tabSize: number, insertSpaces: boolean): Promise<TextEdit[]> {
   try {
     const connection = await getConnection();
-    const edits = await connection.sendRequest<TextEdit[] | null>("textDocument/formatting", {
+    const edits = await connection.sendRequest(DocumentFormattingRequest.type, {
       textDocument: { uri },
       options: { tabSize, insertSpaces },
     });
@@ -209,10 +210,13 @@ export async function requestFormatting(uri: string, tabSize: number, insertSpac
 export async function requestDocumentSymbols(uri: string): Promise<SymbolInformation[]> {
   try {
     const connection = await getConnection();
-    const symbols = await connection.sendRequest<SymbolInformation[] | null>("textDocument/documentSymbol", {
+    const symbols = await connection.sendRequest(DocumentSymbolRequest.type, {
       textDocument: { uri },
     });
-    return symbols ?? [];
+    // cwl-lsp always returns the flat SymbolInformation[] shape (see
+    // DocumentSymbolResponse::Flat in backend.rs), never the hierarchical
+    // DocumentSymbol[] the response type also allows.
+    return (symbols as SymbolInformation[] | null) ?? [];
   } catch (e) {
     console.error("[lsp] documentSymbol request failed", e);
     return [];
@@ -226,7 +230,7 @@ export async function requestDocumentSymbols(uri: string): Promise<SymbolInforma
 export async function requestSemanticTokens(uri: string): Promise<number[] | null> {
   try {
     const connection = await getConnection();
-    const result = await connection.sendRequest<{ data: number[] } | null>("textDocument/semanticTokens/full", {
+    const result = await connection.sendRequest(SemanticTokensRequest.type, {
       textDocument: { uri },
     });
     return result?.data ?? null;
