@@ -266,7 +266,7 @@ fn disconnect_workflow_nodes_impl(
             )?;
         }
         (NodeKind::Step, NodeKind::Output) => {
-            workflow::remove_workflow_output_connection(&mut wf, &to.id, false)?;
+            workflow::remove_workflow_output_connection(&mut wf, &from.id, &from.port, &to.id, false)?;
         }
         (from_kind, to_kind) => {
             return Err(MutationError::InvalidConnection {
