@@ -9,50 +9,16 @@ import {
   type Message,
   type MessageConnection,
 } from "vscode-jsonrpc/browser";
+import type { Diagnostic, Range, SemanticTokensLegend, SymbolInformation, TextEdit } from "vscode-languageserver-types";
 
-// Minimal slice of the LSP types cwl-lsp actually uses (see
-// commonwl/crates/lsp/src/backend.rs) - not pulling in
-// vscode-languageserver-protocol since that would mean re-vetting another
-// dependency's module graph for a stray `vscode` import.
-export interface LspPosition {
-  line: number;
-  character: number;
-}
-
-export interface LspRange {
-  start: LspPosition;
-  end: LspPosition;
-}
-
-export interface LspDiagnostic {
-  range: LspRange;
-  severity?: 1 | 2 | 3 | 4;
-  message: string;
-}
 
 interface PublishDiagnosticsParams {
   uri: string;
-  diagnostics: LspDiagnostic[];
-}
-
-export interface LspTextEdit {
-  range: LspRange;
-  newText: string;
-}
-
-export interface LspSymbolInformation {
-  name: string;
-  kind: number;
-  location: { uri: string; range: LspRange };
-}
-
-export interface SemanticTokensLegend {
-  tokenTypes: string[];
-  tokenModifiers: string[];
+  diagnostics: Diagnostic[];
 }
 
 /** LSP positions/ranges are 0-indexed; Monaco's are 1-indexed. */
-export function toMonacoRange(range: LspRange) {
+export function toMonacoRange(range: Range) {
   return {
     startLineNumber: range.start.line + 1,
     startColumn: range.start.character + 1,
@@ -122,16 +88,18 @@ class TauriMessageWriter extends AbstractMessageWriter {
 
 let connectionPromise: Promise<MessageConnection> | undefined;
 
-function diagnosticsToMarkers(diagnostics: LspDiagnostic[]) {
+function diagnosticsToMarkers(diagnostics: Diagnostic[]) {
   const severityMap: Record<number, number> = { 1: 8, 2: 4, 3: 2, 4: 1 }; // monaco.MarkerSeverity Error/Warning/Info/Hint
   return diagnostics.map((d) => ({
     severity: severityMap[d.severity ?? 1] ?? 8,
-    message: d.message,
+    // cwl-lsp always sends a plain string (Rust's Diagnostic.message is a
+    // String, not the MarkupContent variant), but the LSP spec allows both.
+    message: typeof d.message === "string" ? d.message : d.message.value,
     ...toMonacoRange(d.range),
   }));
 }
 
-let onDiagnostics: ((uri: string, diagnostics: LspDiagnostic[]) => void) | undefined;
+let onDiagnostics: ((uri: string, diagnostics: Diagnostic[]) => void) | undefined;
 
 /** Registers the callback invoked with (uri, markers) whenever the server
  * publishes diagnostics for a document. Editor.svelte wires this into
@@ -224,10 +192,10 @@ export async function notifyDidClose(uri: string) {
   }
 }
 
-export async function requestFormatting(uri: string, tabSize: number, insertSpaces: boolean): Promise<LspTextEdit[]> {
+export async function requestFormatting(uri: string, tabSize: number, insertSpaces: boolean): Promise<TextEdit[]> {
   try {
     const connection = await getConnection();
-    const edits = await connection.sendRequest<LspTextEdit[] | null>("textDocument/formatting", {
+    const edits = await connection.sendRequest<TextEdit[] | null>("textDocument/formatting", {
       textDocument: { uri },
       options: { tabSize, insertSpaces },
     });
@@ -238,10 +206,10 @@ export async function requestFormatting(uri: string, tabSize: number, insertSpac
   }
 }
 
-export async function requestDocumentSymbols(uri: string): Promise<LspSymbolInformation[]> {
+export async function requestDocumentSymbols(uri: string): Promise<SymbolInformation[]> {
   try {
     const connection = await getConnection();
-    const symbols = await connection.sendRequest<LspSymbolInformation[] | null>("textDocument/documentSymbol", {
+    const symbols = await connection.sendRequest<SymbolInformation[] | null>("textDocument/documentSymbol", {
       textDocument: { uri },
     });
     return symbols ?? [];
