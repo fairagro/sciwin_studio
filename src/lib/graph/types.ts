@@ -62,9 +62,44 @@ export interface WorkflowView {
   revision: string;
 }
 
-// Payload of the "workflow-changed" Tauri event, emitted by write_file (and,
-// once they exist, mutation commands) after a .cwl file changes on disk.
+// Payload of the "workflow-changed" Tauri event, emitted by write_file and
+// the mutation commands after a .cwl file changes on disk.
 export interface WorkflowChanged {
   path: string;
   revision: string;
+}
+
+// One end of a connect/disconnect call -- mirrors ConnectionEndpoint in
+// src-tauri/src/mutation.rs.
+export interface ConnectionEndpoint {
+  kind: NodeKind;
+  id: string;
+  port: string;
+}
+
+// Mirrors MutationError in src-tauri/src/mutation.rs.
+export type MutationError =
+  | { kind: "editorDirty" }
+  | { kind: "staleRevision" }
+  | { kind: "lossy" }
+  | { kind: "incompatibleTypes"; reason: string }
+  | { kind: "invalidConnection"; reason: string }
+  | { kind: "notFound"; message: string }
+  | { kind: "io"; message: string };
+
+export function mutationErrorMessage(error: MutationError): string {
+  switch (error.kind) {
+    case "editorDirty":
+      return "Save your changes in the editor before editing the graph.";
+    case "staleRevision":
+      return "The file changed since the graph was loaded. Reloading.";
+    case "lossy":
+      return "This workflow uses $import or $graph, which the graph view can't edit yet.";
+    case "incompatibleTypes":
+    case "invalidConnection":
+      return error.reason;
+    case "notFound":
+    case "io":
+      return error.message;
+  }
 }
