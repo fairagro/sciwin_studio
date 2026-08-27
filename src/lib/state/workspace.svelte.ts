@@ -1,10 +1,27 @@
+import { invoke } from "@tauri-apps/api/core";
+
+export type TabViewMode = "graph" | "code";
+export type CWLDocType = "Workflow" | "CommandLineTool" | "ExpressionTool" | "Operation";
+
 export interface Tab {
   path: string;
   name: string;
   dirty: boolean;
+  viewMode: TabViewMode;
 }
 
 export type SidebarView = "workflows" | "filesystem" | "sourcecontrol";
+
+export async function loadDocType(path: string): Promise<CWLDocType | null> {
+  try {
+    return await invoke<CWLDocType>("cwl_doc_type", {
+      path
+    });
+  } catch (error) {
+    console.error("Failed to determine CWL document type:", error);
+    return null
+  }
+}
 
 class WorkspaceState {
   projectPath = $state<string | null>(null);
@@ -59,11 +76,19 @@ class WorkspaceState {
     this.activePath = null;
   }
 
-  openTab(path: string, name: string) {
+  async openTab(path: string, name: string) {
     if (!this.tabs.some((t) => t.path === path)) {
-      this.tabs.push({ path, name, dirty: false });
+      const is_cwl = name.toLowerCase().endsWith(".cwl");
+      const cwltype = await loadDocType(path);
+      const viewMode: TabViewMode = is_cwl && cwltype == "Workflow" as CWLDocType ? "graph" : "code";
+      this.tabs.push({ path, name, dirty: false, viewMode });
     }
     this.activePath = path;
+  }
+
+  setViewMode(path: string, mode: TabViewMode) {
+    const tab = this.tabs.find((t) => t.path === path);
+    if (tab) tab.viewMode = mode;
   }
 
   closeTab(path: string) {

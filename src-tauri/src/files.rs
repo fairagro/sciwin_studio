@@ -1,5 +1,6 @@
 use ignore::WalkBuilder;
-use serde::Serialize;
+use sciwin::cwl::{documents::CWLDocument, load_cwl_file};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Clone)]
@@ -104,4 +105,30 @@ pub fn write_file(path: String, contents: String) -> Result<(), String> {
 #[tauri::command]
 pub fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum CWLDocType {
+    Workflow,
+    CommandLineTool,
+    ExpressionTool,
+    Operation,
+}
+
+impl From<CWLDocument> for CWLDocType {
+    fn from(value: CWLDocument) -> Self {
+        match value {
+            CWLDocument::CommandLineTool(_) => Self::CommandLineTool,
+            CWLDocument::ExpressionTool(_) => Self::ExpressionTool,
+            CWLDocument::Operation(_) => Self::Operation,
+            CWLDocument::Workflow(_) => Self::Workflow,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn cwl_doc_type(path: String) -> Result<CWLDocType, String> {
+    Ok(load_cwl_file(path, false)
+        .map_err(|e| e.to_string())?
+        .into())
 }
