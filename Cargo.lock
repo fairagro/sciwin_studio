@@ -7306,11 +7306,13 @@ dependencies = [
  "portable-pty",
  "sciwin",
  "serde",
+ "serde-saphyr",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+ "tempfile",
  "tokio",
  "tower-lsp-server",
 ]

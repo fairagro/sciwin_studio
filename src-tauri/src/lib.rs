@@ -1,5 +1,6 @@
 mod files;
 mod lsp;
+mod mutation;
 mod project;
 mod session;
 mod terminal;
@@ -9,6 +10,7 @@ mod graph_types;
 use files::{cwl_doc_type, get_cwl_files, list_dir, path_exists, read_file, write_file};
 use graph::get_workflow_graph;
 use lsp::lsp_send;
+use mutation::{connect_workflow_nodes, disconnect_workflow_nodes};
 use project::{has_workflow_config, init_sciwin_project};
 use session::{load_session, save_session};
 use terminal::{PtyState, check_s4n, pty_kill, pty_resize, pty_spawn, pty_write};
@@ -40,7 +42,9 @@ pub fn run() {
             save_session,
             load_session,
             cwl_doc_type,
-            get_workflow_graph
+            get_workflow_graph,
+            connect_workflow_nodes,
+            disconnect_workflow_nodes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

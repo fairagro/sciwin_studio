@@ -343,7 +343,7 @@ fn cyclic_step_ids(workflow: &Workflow) -> HashSet<String> {
         .collect()
 }
 
-fn get_output_type(doc: &CWLDocument, id: &str) -> Option<CommandOutputParameterType> {
+pub(crate) fn get_output_type(doc: &CWLDocument, id: &str) -> Option<CommandOutputParameterType> {
     match doc {
         CWLDocument::ExpressionTool(et) => et
             .outputs
