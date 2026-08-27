@@ -57,4 +57,14 @@ export interface FlowEdge {
 export interface WorkflowView {
   nodes: FlowNode[];
   edges: FlowEdge[];
+  // Hash of the file's on-disk bytes at load time. Mutation commands take
+  // this back and refuse if the file no longer matches.
+  revision: string;
+}
+
+// Payload of the "workflow-changed" Tauri event, emitted by write_file (and,
+// once they exist, mutation commands) after a .cwl file changes on disk.
+export interface WorkflowChanged {
+  path: string;
+  revision: string;
 }

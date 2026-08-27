@@ -36,9 +36,15 @@ impl NodeRef {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkflowView {
     pub nodes: Vec<FlowNode>,
     pub edges: Vec<FlowEdge>,
+    /// Hash of the file's on-disk bytes at load time. A mutation command
+    /// passes this back; the backend refuses (does not corrupt the file)
+    /// if the file no longer matches, whether from an external change or an
+    /// unsaved Monaco edit the graph view hasn't seen yet.
+    pub revision: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -2,6 +2,16 @@ use ignore::WalkBuilder;
 use sciwin::cwl::{documents::CWLDocument, load_cwl_file};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Emitter};
+
+use crate::graph::compute_revision;
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowChanged {
+    pub path: String,
+    pub revision: String,
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -97,9 +107,17 @@ pub fn read_file(path: String) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "binary".to_string())
 }
 
+/// Saving a `.cwl` file from Monaco changes what the graph view should show
+/// for that path; `workflow-changed` tells any open graph view to re-fetch
+/// instead of going stale until the tab is switched away and back.
 #[tauri::command]
-pub fn write_file(path: String, contents: String) -> Result<(), String> {
-    std::fs::write(path, contents).map_err(|e| e.to_string())
+pub fn write_file(app: AppHandle, path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents.as_bytes()).map_err(|e| e.to_string())?;
+    if path.to_lowercase().ends_with(".cwl") {
+        let revision = compute_revision(contents.as_bytes());
+        let _ = app.emit("workflow-changed", WorkflowChanged { path, revision });
+    }
+    Ok(())
 }
 
 #[tauri::command]

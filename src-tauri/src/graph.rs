@@ -20,14 +20,25 @@ use crate::graph_types::{
     RunRef, WorkflowView,
 };
 
-/// Loads and reads a workflow's graph. 
+/// Loads and reads a workflow's graph.
 #[tauri::command]
 pub fn get_workflow_graph(path: String) -> Result<WorkflowView, String> {
     let doc = load_cwl_file(&path, true).map_err(|e| e.to_string())?;
     let CWLDocument::Workflow(workflow) = doc else {
         return Err(format!("{path} is not a Workflow document"));
     };
-    Ok(load_workflow_graph(&workflow, &path))
+    let mut view = load_workflow_graph(&workflow, &path);
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    view.revision = compute_revision(&bytes);
+    Ok(view)
+}
+
+/// Hash of raw file bytes, not of the parsed/preprocessed document
+pub fn compute_revision(bytes: &[u8]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> WorkflowView {
@@ -35,6 +46,7 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
     let mut view = WorkflowView {
         nodes: Vec::new(),
         edges: Vec::new(),
+        revision: String::new(),
     };
 
     let input_ids: HashSet<&str> = workflow
@@ -193,8 +205,15 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                 diagnostics,
                 status: None,
                 when: step.when.clone(),
-                scatter: step.scatter.as_ref().map(OneOrMany::as_many).unwrap_or_default(),
-                scatter_method: step.scatter_method.map(scatter_method_label).map(str::to_string),
+                scatter: step
+                    .scatter
+                    .as_ref()
+                    .map(OneOrMany::as_many)
+                    .unwrap_or_default(),
+                scatter_method: step
+                    .scatter_method
+                    .map(scatter_method_label)
+                    .map(str::to_string),
             },
         });
 
@@ -738,13 +757,9 @@ steps:
         let skip_port = syft.data.inputs.iter().find(|p| p.id == "skip").unwrap();
         assert_eq!(skip_port.data_type, "Any");
 
-        assert!(
-            view.edges
-                .iter()
-                .any(|e| e.source == "step/check_index"
-                    && e.source_handle == "exists"
-                    && e.target == "step/syft"
-                    && e.target_handle == "skip")
-        );
+        assert!(view.edges.iter().any(|e| e.source == "step/check_index"
+            && e.source_handle == "exists"
+            && e.target == "step/syft"
+            && e.target_handle == "skip"));
     }
 }
