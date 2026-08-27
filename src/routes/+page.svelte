@@ -9,6 +9,16 @@
   import ResizeHandles from "$lib/components/ResizeHandles.svelte";
   import ResizeHandle from "$lib/components/ResizeHandle.svelte";
   import { workspace } from "$lib/state/workspace.svelte";
+  import { restoreSession, scheduleSave } from "$lib/state/session";
+  import { onMount } from "svelte";
+
+  onMount(() => {
+    restoreSession();
+  });
+
+  $effect(() => {
+    scheduleSave();
+  });
 </script>
 
 <ResizeHandles />

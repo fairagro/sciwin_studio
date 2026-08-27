@@ -100,3 +100,8 @@ pub fn read_file(path: String) -> Result<String, String> {
 pub fn write_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn path_exists(path: String) -> bool {
+    Path::new(&path).exists()
+}
