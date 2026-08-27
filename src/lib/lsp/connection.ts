@@ -78,7 +78,7 @@ class TauriMessageWriter extends AbstractMessageWriter {
     }
   }
 
-  end(): void {}
+  end(): void { }
 }
 
 let connectionPromise: Promise<MessageConnection> | undefined;
@@ -135,7 +135,7 @@ export async function notifyDidOpen(uri: string, languageId: string, text: strin
       textDocument: { uri, languageId, version: 1, text },
     });
   } catch {
-    // ignored - diagnostics are a bonus, not a save-blocking dependency
+    // ignored 
   }
 }
 
@@ -151,7 +151,7 @@ export async function notifyDidChange(uri: string, text: string) {
       contentChanges: [{ text }],
     });
   } catch {
-    // ignored - see notifyDidOpen
+    // ignored
   }
 }
 
@@ -163,6 +163,6 @@ export async function notifyDidClose(uri: string) {
       textDocument: { uri },
     });
   } catch {
-    // ignored - see notifyDidOpen
+    // ignored
   }
 }
