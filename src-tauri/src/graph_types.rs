@@ -1,5 +1,37 @@
 use serde::Serialize;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NodeKind {
+    Input,
+    Output,
+    Step,
+}
+
+/// Identifies a node by kind *and* bare CWL id, never id alone -- a step named
+/// the same as a workflow input/output must not collide with it. See graph.rs.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct NodeRef {
+    pub kind: NodeKind,
+    pub id: String,
+}
+
+impl NodeRef {
+    pub fn new(kind: NodeKind, id: impl Into<String>) -> Self {
+        Self { kind, id: id.into() }
+    }
+
+    /// The id Svelte Flow sees, e.g. "step/plot".
+    pub fn flat(&self) -> String {
+        let prefix = match self.kind {
+            NodeKind::Input => "input",
+            NodeKind::Output => "output",
+            NodeKind::Step => "step",
+        };
+        format!("{prefix}/{}", self.id)
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowView {
     pub nodes: Vec<FlowNode>,
@@ -15,18 +47,37 @@ pub struct FlowNode {
     pub data: FlowNodeData,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct FlowPosition {
     pub x: f32,
     pub y: f32,
 }
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowNodeData {
+    #[serde(rename = "ref")]
+    pub node_ref: NodeRef,
     pub label: String,
     pub inputs: Vec<FlowPort>,
     pub outputs: Vec<FlowPort>,
+    pub run: Option<RunRef>,
+    pub diagnostics: Vec<NodeDiagnostic>,
+    pub status: Option<String>,
+}
+
+/// A step's `run:` is a path to a tool file or an inline document (legal CWL,
+/// guaranteed after unpacking a `$graph`) -- the old builder bailed on inline
+/// docs entirely ("Inline Document not supported"), taking the whole graph down.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RunRef {
+    File { path: String },
+    Inline,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeDiagnostic {
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
