@@ -7302,6 +7302,7 @@ dependencies = [
  "commonwl",
  "cwl-lsp",
  "ignore",
+ "petgraph",
  "portable-pty",
  "sciwin",
  "serde",

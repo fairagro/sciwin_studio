@@ -1,14 +1,16 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     path::Path,
 };
 
 use commonwl::{
-    OneOrMany, load_cwl_file,
+    OneOrMany,
     documents::{CWLDocument, StringOrDocument, Workflow},
     inputs::{InputSchema, InputType},
+    load_cwl_file,
     outputs::{CommandOutputParameterType, CommandOutputSchema, CommandOutputType},
 };
+use petgraph::{algo::tarjan_scc, graph::DiGraph};
 
 use crate::graph_types::{
     FlowEdge, FlowNode, FlowNodeData, FlowPort, FlowPosition, NodeDiagnostic, NodeKind, NodeRef,
@@ -22,8 +24,16 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
         edges: Vec::new(),
     };
 
-    let input_ids: HashSet<&str> = workflow.inputs.iter().filter_map(|i| i.id.as_deref()).collect();
-    let step_ids: HashSet<&str> = workflow.steps.iter().filter_map(|s| s.id.as_deref()).collect();
+    let input_ids: HashSet<&str> = workflow
+        .inputs
+        .iter()
+        .filter_map(|i| i.id.as_deref())
+        .collect();
+    let step_ids: HashSet<&str> = workflow
+        .steps
+        .iter()
+        .filter_map(|s| s.id.as_deref())
+        .collect();
     let cyclic_steps = cyclic_step_ids(workflow);
 
     for input in &workflow.inputs {
@@ -49,7 +59,9 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
     }
 
     for step in &workflow.steps {
-        let Some(step_id) = step.id.clone() else { continue };
+        let Some(step_id) = step.id.clone() else {
+            continue;
+        };
         let node_ref = NodeRef::new(NodeKind::Step, step_id.clone());
 
         let mut diagnostics = vec![];
@@ -119,7 +131,9 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
         });
 
         for wsip in &step.r#in {
-            let Some(target_port) = wsip.id.clone() else { continue };
+            let Some(target_port) = wsip.id.clone() else {
+                continue;
+            };
             let Some(source) = &wsip.source else { continue };
             // one edge per source
             for src in source.as_many() {
@@ -136,7 +150,9 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
     }
 
     for output in &workflow.outputs {
-        let Some(id) = output.id.clone() else { continue };
+        let Some(id) = output.id.clone() else {
+            continue;
+        };
         let node_ref = NodeRef::new(NodeKind::Output, id.clone());
         view.nodes.push(FlowNode {
             id: node_ref.flat(),
@@ -160,7 +176,8 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
             // `outputSource: some_input` (no slash) is a legal pass-through
             for src in output_source.as_many() {
                 if let Some((from_ref, from_port)) = resolve_source(&src, &input_ids, &step_ids) {
-                    view.edges.push(make_edge(from_ref, &from_port, node_ref.clone(), &id));
+                    view.edges
+                        .push(make_edge(from_ref, &from_port, node_ref.clone(), &id));
                 }
             }
         }
@@ -197,51 +214,41 @@ fn make_edge(from: NodeRef, from_port: &str, to: NodeRef, to_port: &str) -> Flow
     }
 }
 
-/// Step ids that are part of, or depend on, a cycle. Cycles used to abort the
-/// whole graph build (`sort_steps`); rendering a cyclic workflow is how you
-/// find the cycle, so this only reports it as a per-node diagnostic now.
+/// Step ids that are themselves part of a cycle using petgraph
 fn cyclic_step_ids(workflow: &Workflow) -> HashSet<String> {
-    let step_ids: HashSet<String> = workflow.steps.iter().filter_map(|s| s.id.clone()).collect();
-
-    let mut dependents: HashMap<String, Vec<String>> = HashMap::new();
-    let mut in_degree: HashMap<String, usize> = step_ids.iter().cloned().map(|id| (id, 0)).collect();
+    let mut graph = DiGraph::<&str, ()>::new();
+    let mut index_of = HashMap::new();
+    for step in &workflow.steps {
+        if let Some(id) = step.id.as_deref() {
+            index_of.entry(id).or_insert_with(|| graph.add_node(id));
+        }
+    }
 
     for step in &workflow.steps {
-        let Some(step_id) = &step.id else { continue };
+        let Some(step_id) = step.id.as_deref() else {
+            continue;
+        };
+        let Some(&to) = index_of.get(step_id) else {
+            continue;
+        };
         for wsip in &step.r#in {
             let Some(source) = &wsip.source else { continue };
             for src in source.as_many() {
-                let Some((dep, _)) = src.split_once('/') else { continue };
-                if step_ids.contains(dep) {
-                    dependents.entry(dep.to_string()).or_default().push(step_id.clone());
-                    *in_degree.entry(step_id.clone()).or_insert(0) += 1;
+                let Some((dep, _)) = src.split_once('/') else {
+                    continue;
+                };
+                if let Some(&from) = index_of.get(dep) {
+                    graph.add_edge(from, to, ());
                 }
             }
         }
     }
 
-    let mut queue: VecDeque<String> = in_degree
-        .iter()
-        .filter(|&(_, &degree)| degree == 0)
-        .map(|(id, _)| id.clone())
-        .collect();
-
-    let mut resolved = HashSet::new();
-    while let Some(step_id) = queue.pop_front() {
-        resolved.insert(step_id.clone());
-        if let Some(deps) = dependents.get(&step_id) {
-            for dependent in deps {
-                if let Some(degree) = in_degree.get_mut(dependent) {
-                    *degree -= 1;
-                    if *degree == 0 {
-                        queue.push_back(dependent.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    step_ids.difference(&resolved).cloned().collect()
+    tarjan_scc(&graph)
+        .into_iter()
+        .filter(|scc| scc.len() > 1 || graph.contains_edge(scc[0], scc[0]))
+        .flat_map(|scc| scc.into_iter().map(|idx| graph[idx].to_string()))
+        .collect()
 }
 
 fn get_output_type(doc: &CWLDocument, id: &str) -> Option<CommandOutputParameterType> {
@@ -272,10 +279,12 @@ fn get_output_type(doc: &CWLDocument, id: &str) -> Option<CommandOutputParameter
 }
 
 // Full recursive type rendering (record fields, enum symbols, nested arrays)
-// is Phase 6's type-palette work. This gives a clean top-level label instead
-// of leaking `format!("{:?}", ...)` Rust Debug output into port labels.
 fn input_type_label(t: &OneOrMany<InputType>) -> String {
-    t.as_many().iter().map(single_input_type_label).collect::<Vec<_>>().join(" | ")
+    t.as_many()
+        .iter()
+        .map(single_input_type_label)
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 fn single_input_type_label(t: &InputType) -> String {
@@ -350,12 +359,6 @@ mod tests {
         assert_eq!(view.edges.len(), 2);
     }
 
-    // A step id equal to an input id is legal CWL -- commonwl's own
-    // `validate_unique_ids` only checks uniqueness within one list (inputs,
-    // outputs, steps each validated separately), not across them. The old
-    // `HashMap<String, NodeIndex>` node_map let the step silently overwrite
-    // the input's entry; every edge then resolved to the step. NodeRef fixes
-    // this by keying identity on (kind, id), not id alone.
     #[test]
     fn test_step_id_collides_with_input_id() {
         let yaml = r"
@@ -396,8 +399,16 @@ steps:
         assert!(ids.contains("output/result"));
 
         assert_eq!(view.edges.len(), 2);
-        assert!(view.edges.iter().any(|e| e.source == "input/x" && e.target == "step/x"));
-        assert!(view.edges.iter().any(|e| e.source == "step/x" && e.target == "output/result"));
+        assert!(
+            view.edges
+                .iter()
+                .any(|e| e.source == "input/x" && e.target == "step/x")
+        );
+        assert!(
+            view.edges
+                .iter()
+                .any(|e| e.source == "step/x" && e.target == "output/result")
+        );
     }
 
     #[test]
@@ -445,5 +456,73 @@ steps:
         assert_eq!(view.nodes.len(), 2);
         assert_eq!(view.edges.len(), 2);
         assert!(view.nodes.iter().all(|n| !n.data.diagnostics.is_empty()));
+    }
+
+    #[test]
+    fn test_step_downstream_of_cycle_is_not_itself_flagged() {
+        let yaml = r"
+cwlVersion: v1.2
+class: Workflow
+inputs: []
+outputs: []
+steps:
+- id: a
+  in:
+  - id: in_val
+    source: b/out
+  out:
+  - out
+  run:
+    class: CommandLineTool
+    inputs:
+    - id: in_val
+      type: File
+    outputs:
+    - id: out
+      type: File
+- id: b
+  in:
+  - id: in_val
+    source: a/out
+  out:
+  - out
+  run:
+    class: CommandLineTool
+    inputs:
+    - id: in_val
+      type: File
+    outputs:
+    - id: out
+      type: File
+- id: c
+  in:
+  - id: in_val
+    source: b/out
+  out:
+  - out
+  run:
+    class: CommandLineTool
+    inputs:
+    - id: in_val
+      type: File
+    outputs:
+    - id: out
+      type: File
+";
+        let CWLDocument::Workflow(workflow) = commonwl::from_str(yaml).unwrap() else {
+            panic!("Expected a workflow document")
+        };
+        let view = load_workflow_graph(&workflow, "workflow.cwl");
+
+        let diagnostics_of = |id: &str| {
+            view.nodes
+                .iter()
+                .find(|n| n.id == id)
+                .map(|n| n.data.diagnostics.len())
+                .unwrap()
+        };
+        assert!(diagnostics_of("step/a") > 0);
+        assert!(diagnostics_of("step/b") > 0);
+        assert_eq!(diagnostics_of("step/c"), 0);
     }
 }
