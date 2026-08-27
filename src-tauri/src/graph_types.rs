@@ -18,7 +18,10 @@ pub struct NodeRef {
 
 impl NodeRef {
     pub fn new(kind: NodeKind, id: impl Into<String>) -> Self {
-        Self { kind, id: id.into() }
+        Self {
+            kind,
+            id: id.into(),
+        }
     }
 
     /// The id Svelte Flow sees, e.g. "step/plot".
@@ -63,6 +66,9 @@ pub struct FlowNodeData {
     pub run: Option<RunRef>,
     pub diagnostics: Vec<NodeDiagnostic>,
     pub status: Option<String>,
+    pub when: Option<String>,
+    pub scatter: Vec<String>,
+    pub scatter_method: Option<String>,
 }
 
 /// A step's `run:` is a path to a tool file or an inline document (legal CWL,
@@ -85,6 +91,10 @@ pub struct NodeDiagnostic {
 pub struct FlowPort {
     pub id: String,
     pub data_type: String,
+    /// "merge_nested" | "merge_flattened".
+    pub link_merge: Option<String>,
+    /// "first_non_null" | "the_only_non_null" | "all_non_null".
+    pub pick_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -44,13 +44,13 @@
 
 <div class="relative h-full w-full">
   <SvelteFlow bind:nodes bind:edges {nodeTypes} nodesConnectable={false} fitView colorMode="dark">
-    <Background />
+    <Background bgColor="var(--color-bg)" patternColor="var(--color-border-soft)" gap={22} size={1} />
     <Controls />
-    <MiniMap />
+    <MiniMap bgColor="var(--color-bg-panel)" maskColor="rgba(18, 19, 22, 0.65)" />
   </SvelteFlow>
   {#if loadError}
     <div
-      class="absolute top-2 left-2 rounded border border-red-800 bg-red-950/90 px-3 py-1.5 text-xs text-red-200"
+      class="absolute top-2 left-2 rounded border border-fairagro-red bg-bg-panel px-3 py-1.5 font-mono text-xs text-fairagro-red-light"
     >
       Failed to load graph: {loadError}
     </div>

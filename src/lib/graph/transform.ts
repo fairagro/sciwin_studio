@@ -1,6 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import { Position, type Node, type Edge } from "@xyflow/svelte";
 import type { FlowNode, FlowPort, WorkflowView } from "./types";
+import { pickValueEdgeStyle, pickValueLabel, pickValueLabelStyle } from "./styling";
 
 // Sized from label/port text length
 const CHAR_WIDTH = 6.5;
@@ -11,6 +12,22 @@ const MAX_WIDTH = 320;
 
 function portLabelLength(port: FlowPort): number {
   return port.id.length + port.dataType.length + 2;
+}
+
+// `nodeId::portId` -> that input port, so edges landing on a pickValue
+// port can be found without an O(nodes * ports) scan per edge.
+function inputPortKey(nodeId: string, portId: string): string {
+  return `${nodeId}::${portId}`;
+}
+
+function buildInputPortIndex(nodes: FlowNode[]): Map<string, FlowPort> {
+  const index = new Map<string, FlowPort>();
+  for (const node of nodes) {
+    for (const port of node.data.inputs) {
+      index.set(inputPortKey(node.id, port.id), port);
+    }
+  }
+  return index;
 }
 
 function estimateSize(node: FlowNode): { width: number; height: number } {
@@ -56,13 +73,21 @@ export function toSvelteFlow(view: WorkflowView): { nodes: Node[]; edges: Edge[]
     };
   });
 
-  const edges: Edge[] = view.edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    sourceHandle: e.sourceHandle,
-    targetHandle: e.targetHandle,
-  }));
+  const inputPorts = buildInputPortIndex(view.nodes);
+
+  const edges: Edge[] = view.edges.map((e) => {
+    const pickValue = inputPorts.get(inputPortKey(e.target, e.targetHandle))?.pickValue ?? null;
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle,
+      targetHandle: e.targetHandle,
+      ...(pickValue
+        ? { style: pickValueEdgeStyle, label: pickValueLabel(pickValue), labelStyle: pickValueLabelStyle }
+        : {}),
+    };
+  });
 
   return { nodes, edges };
 }

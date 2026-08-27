@@ -5,10 +5,13 @@ use std::{
 
 use commonwl::{
     OneOrMany,
-    documents::{CWLDocument, StringOrDocument, Workflow},
-    inputs::{InputSchema, InputType},
+    documents::{CWLDocument, ScatterMethod, StringOrDocument, Workflow},
+    inputs::{InputSchema, InputType, WorkflowStepInput},
     load_cwl_file,
-    outputs::{CommandOutputParameterType, CommandOutputSchema, CommandOutputType},
+    outputs::{
+        CommandOutputParameterType, CommandOutputSchema, CommandOutputType, LinkMergeMethod,
+        PickValueMethod,
+    },
 };
 use petgraph::{algo::tarjan_scc, graph::DiGraph};
 
@@ -60,10 +63,15 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                 outputs: vec![FlowPort {
                     id: id.clone(),
                     data_type: input_type_label(&input.r#type),
+                    link_merge: None,
+                    pick_value: None,
                 }],
                 run: None,
                 diagnostics: vec![],
                 status: None,
+                when: None,
+                scatter: vec![],
+                scatter_method: None,
             },
         });
     }
@@ -103,25 +111,72 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
             });
         }
 
+        // The tool's own parameter declarations (doc.get_inputs()) carry no
+        // link_merge/pick_value -- those live on the *workflow's* per-step
+        // wiring (step.r#in), keyed by the same port id.
+        let step_inputs: HashMap<&str, &WorkflowStepInput> = step
+            .r#in
+            .iter()
+            .filter_map(|wsip| Some((wsip.id.as_deref()?, wsip)))
+            .collect();
+
         let (inputs, outputs) = match &doc {
-            Some(doc) => (
-                doc.get_inputs()
+            Some(doc) => {
+                let mut inputs: Vec<FlowPort> = doc
+                    .get_inputs()
                     .iter()
-                    .map(|i| FlowPort {
-                        id: i.id.clone().unwrap_or_default(),
-                        data_type: input_type_label(&i.r#type),
+                    .map(|i| {
+                        let id = i.id.clone().unwrap_or_default();
+                        let wsip = step_inputs.get(id.as_str());
+                        FlowPort {
+                            data_type: input_type_label(&i.r#type),
+                            link_merge: wsip
+                                .and_then(|w| w.link_merge)
+                                .map(link_merge_label)
+                                .map(str::to_string),
+                            pick_value: wsip
+                                .and_then(|w| w.pick_value)
+                                .map(pick_value_label)
+                                .map(str::to_string),
+                            id,
+                        }
                     })
-                    .collect(),
-                doc.get_output_ids()
+                    .collect();
+
+                // step.r#in can bind a name the tool itself never declares --
+                // e.g. a value only read by this step's own `when:` or
+                // `valueFrom:` expression, legal CWL under
+                // StepInputExpressionRequirement. Render those too, or the
+                // edge feeding them has no port to land on and silently
+                // fails to draw.
+                let declared: HashSet<String> = inputs.iter().map(|p| p.id.clone()).collect();
+                for (&id, &wsip) in &step_inputs {
+                    if declared.contains(id) {
+                        continue;
+                    }
+                    inputs.push(FlowPort {
+                        id: id.to_string(),
+                        data_type: "Any".to_string(),
+                        link_merge: wsip.link_merge.map(link_merge_label).map(str::to_string),
+                        pick_value: wsip.pick_value.map(pick_value_label).map(str::to_string),
+                    });
+                }
+
+                let outputs = doc
+                    .get_output_ids()
                     .iter()
                     .map(|id| FlowPort {
                         id: id.clone(),
                         data_type: get_output_type(doc, id)
                             .map(|t| output_type_label(&t))
                             .unwrap_or_default(),
+                        link_merge: None,
+                        pick_value: None,
                     })
-                    .collect(),
-            ),
+                    .collect();
+
+                (inputs, outputs)
+            }
             None => (vec![], vec![]),
         };
 
@@ -137,6 +192,9 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                 run: Some(run),
                 diagnostics,
                 status: None,
+                when: step.when.clone(),
+                scatter: step.scatter.as_ref().map(OneOrMany::as_many).unwrap_or_default(),
+                scatter_method: step.scatter_method.map(scatter_method_label).map(str::to_string),
             },
         });
 
@@ -174,11 +232,16 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                 inputs: vec![FlowPort {
                     id: id.clone(),
                     data_type: output_type_label(&output.r#type),
+                    link_merge: None,
+                    pick_value: None,
                 }],
                 outputs: vec![],
                 run: None,
                 diagnostics: vec![],
                 status: None,
+                when: None,
+                scatter: vec![],
+                scatter_method: None,
             },
         });
 
@@ -331,6 +394,29 @@ fn single_output_type_label(t: &CommandOutputType) -> String {
             CommandOutputSchema::Enum(_) => "enum".to_string(),
         },
         CommandOutputType::String(s) => s.clone(),
+    }
+}
+
+fn link_merge_label(m: LinkMergeMethod) -> &'static str {
+    match m {
+        LinkMergeMethod::MergeNested => "merge_nested",
+        LinkMergeMethod::MergeFlattened => "merge_flattened",
+    }
+}
+
+fn pick_value_label(m: PickValueMethod) -> &'static str {
+    match m {
+        PickValueMethod::FirstNonNull => "first_non_null",
+        PickValueMethod::TheOnlyNonNull => "the_only_non_null",
+        PickValueMethod::AllNonNull => "all_non_null",
+    }
+}
+
+fn scatter_method_label(m: ScatterMethod) -> &'static str {
+    match m {
+        ScatterMethod::Dotproduct => "dotproduct",
+        ScatterMethod::NestedCrossproduct => "nested_crossproduct",
+        ScatterMethod::FlatCrossproduct => "flat_crossproduct",
     }
 }
 
@@ -534,5 +620,131 @@ steps:
         assert!(diagnostics_of("step/a") > 0);
         assert!(diagnostics_of("step/b") > 0);
         assert_eq!(diagnostics_of("step/c"), 0);
+    }
+
+    #[test]
+    fn test_scatter_when_and_step_input_wiring() {
+        let yaml = r"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+- id: a
+  type: File[]
+- id: b
+  type: File[]
+outputs: []
+steps:
+- id: process
+  when: $(inputs.a != null)
+  scatter:
+  - a
+  - b
+  scatterMethod: dotproduct
+  in:
+  - id: a
+    source: a
+    linkMerge: merge_flattened
+    pickValue: first_non_null
+  - id: b
+    source: b
+  out:
+  - out
+  run:
+    class: CommandLineTool
+    inputs:
+    - id: a
+      type: File
+    - id: b
+      type: File
+    outputs:
+    - id: out
+      type: File
+";
+        let CWLDocument::Workflow(workflow) = commonwl::from_str(yaml).unwrap() else {
+            panic!("Expected a workflow document")
+        };
+        let view = load_workflow_graph(&workflow, "workflow.cwl");
+
+        let step = view.nodes.iter().find(|n| n.id == "step/process").unwrap();
+        assert_eq!(step.data.when.as_deref(), Some("$(inputs.a != null)"));
+        assert_eq!(step.data.scatter, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(step.data.scatter_method.as_deref(), Some("dotproduct"));
+
+        let port_a = step.data.inputs.iter().find(|p| p.id == "a").unwrap();
+        assert_eq!(port_a.link_merge.as_deref(), Some("merge_flattened"));
+        assert_eq!(port_a.pick_value.as_deref(), Some("first_non_null"));
+
+        let port_b = step.data.inputs.iter().find(|p| p.id == "b").unwrap();
+        assert_eq!(port_b.link_merge, None);
+        assert_eq!(port_b.pick_value, None);
+    }
+
+    // A step's `in:` can bind a name the underlying tool never declares --
+    // e.g. a boolean only read by this step's own `when:` expression, legal
+    // under StepInputExpressionRequirement (this is exactly the pattern in
+    // container-registry/workflows/scan-image/workflow.cwl's `skip` input).
+    // Building ports only from doc.get_inputs() drops that binding entirely,
+    // so the edge feeding it has no port to land on and never renders.
+    #[test]
+    fn test_step_input_not_declared_by_tool_still_gets_a_port_and_edge() {
+        let yaml = r"
+cwlVersion: v1.2
+class: Workflow
+requirements:
+- class: StepInputExpressionRequirement
+inputs:
+- id: image
+  type: string
+outputs: []
+steps:
+- id: check_index
+  in:
+  - id: image
+    source: image
+  out:
+  - exists
+  run:
+    class: CommandLineTool
+    inputs:
+    - id: image
+      type: string
+    outputs:
+    - id: exists
+      type: boolean
+- id: syft
+  in:
+  - id: image
+    source: image
+  - id: skip
+    source: check_index/exists
+  when: $(!inputs.skip)
+  out:
+  - output
+  run:
+    class: CommandLineTool
+    inputs:
+    - id: image
+      type: string
+    outputs:
+    - id: output
+      type: File
+";
+        let CWLDocument::Workflow(workflow) = commonwl::from_str(yaml).unwrap() else {
+            panic!("Expected a workflow document")
+        };
+        let view = load_workflow_graph(&workflow, "workflow.cwl");
+
+        let syft = view.nodes.iter().find(|n| n.id == "step/syft").unwrap();
+        let skip_port = syft.data.inputs.iter().find(|p| p.id == "skip").unwrap();
+        assert_eq!(skip_port.data_type, "Any");
+
+        assert!(
+            view.edges
+                .iter()
+                .any(|e| e.source == "step/check_index"
+                    && e.source_handle == "exists"
+                    && e.target == "step/syft"
+                    && e.target_handle == "skip")
+        );
     }
 }
