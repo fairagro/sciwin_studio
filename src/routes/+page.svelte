@@ -24,7 +24,7 @@
 </script>
 
 <ResizeHandles />
-<div class="grid h-screen w-screen grid-rows-[auto_1fr_auto] overflow-hidden bg-bg text-text">
+<div class="grid h-screen w-screen grid-cols-1 grid-rows-[auto_1fr_auto] overflow-hidden bg-bg text-text">
   <Titlebar />
   <div class="flex min-h-0 flex-1">
     <IconRail />

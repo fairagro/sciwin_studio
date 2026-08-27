@@ -2,6 +2,8 @@
   import { SvelteFlow, Background, Controls, MiniMap, Position, type Node, type Edge } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
   import dagre from "@dagrejs/dagre";
+  import { workspace } from "$lib/state/workspace.svelte";
+    import { invoke } from "@tauri-apps/api/core";
 
   // Stand-in for container-registry/workflows/workflow.cwl's step graph -
   // proves SvelteFlow + dagre render together in the real app shell. Not yet
@@ -57,6 +59,12 @@
   const initial = layout();
   let nodes = $state.raw(initial.nodes);
   let edges = $state.raw(initial.edges);
+
+  $effect(() => {
+    const tab = workspace.activeTab;
+    if (!tab) return;
+    let workflow = invoke('get_workflow_graph', {path: tab.path})
+  });
 </script>
 
 <div class="h-full w-full">
