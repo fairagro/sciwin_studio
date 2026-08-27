@@ -5,6 +5,7 @@
   import { onMount, onDestroy } from "svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import { notifyDidChange, notifyDidClose, notifyDidOpen, setDiagnosticsHandler } from "$lib/lsp/connection";
+  import { registerLspProviders } from "$lib/lsp/providers";
 
   function isCwl(name: string): boolean {
     return name.toLowerCase().endsWith(".cwl");
@@ -140,6 +141,7 @@
       const model = monaco.editor.getModel(monaco.Uri.parse(uri));
       if (model) monaco.editor.setModelMarkers(model, "cwl-lsp", markers);
     });
+    registerLspProviders();
   });
 
   onDestroy(() => {

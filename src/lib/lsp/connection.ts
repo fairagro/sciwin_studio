@@ -8,7 +8,7 @@ import {
   type Disposable,
   type Message,
   type MessageConnection,
-} from "vscode-jsonrpc";
+} from "vscode-jsonrpc/browser";
 
 // Minimal slice of the LSP types cwl-lsp actually uses (see
 // commonwl/crates/lsp/src/backend.rs) - not pulling in
@@ -35,6 +35,32 @@ interface PublishDiagnosticsParams {
   diagnostics: LspDiagnostic[];
 }
 
+export interface LspTextEdit {
+  range: LspRange;
+  newText: string;
+}
+
+export interface LspSymbolInformation {
+  name: string;
+  kind: number;
+  location: { uri: string; range: LspRange };
+}
+
+export interface SemanticTokensLegend {
+  tokenTypes: string[];
+  tokenModifiers: string[];
+}
+
+/** LSP positions/ranges are 0-indexed; Monaco's are 1-indexed. */
+export function toMonacoRange(range: LspRange) {
+  return {
+    startLineNumber: range.start.line + 1,
+    startColumn: range.start.character + 1,
+    endLineNumber: range.end.line + 1,
+    endColumn: range.end.character + 1,
+  };
+}
+
 /** Reads complete LSP messages off the `lsp://message` Tauri event. Rust does
  * the Content-Length framing, so each event payload is already one full,
  * valid JSON-RPC message string. */
@@ -42,17 +68,29 @@ class TauriMessageReader extends AbstractMessageReader {
   private callback: DataCallback | undefined;
   private unlisten: (() => void) | undefined;
 
-  listen(callback: DataCallback): Disposable {
-    this.callback = callback;
-    listen<string>("lsp://message", (event) => {
+  // Tauri's listen() is itself an async IPC round trip to register the
+  // subscription. Without waiting for it, connect() could send `initialize`
+  // before the listener actually exists, and the response would be dropped
+  // on the floor with zero visible symptoms - a permanently-pending
+  // getConnection() promise, no error, no diagnostics, nothing.
+  readonly ready: Promise<void>;
+
+  constructor() {
+    super();
+    this.ready = listen<string>("lsp://message", (event) => {
       try {
         this.callback?.(JSON.parse(event.payload) as Message);
       } catch (e) {
+        console.error("[lsp] failed to parse message from server", e, event.payload);
         this.fireError(e);
       }
     }).then((fn) => {
       this.unlisten = fn;
     });
+  }
+
+  listen(callback: DataCallback): Disposable {
+    this.callback = callback;
     return {
       dispose: () => {
         this.unlisten?.();
@@ -74,6 +112,7 @@ class TauriMessageWriter extends AbstractMessageWriter {
     try {
       await invoke("lsp_send", { msg: framed });
     } catch (e) {
+      console.error("[lsp] failed to send message", e, msg);
       this.fireError(e, msg, 1);
     }
   }
@@ -88,10 +127,7 @@ function diagnosticsToMarkers(diagnostics: LspDiagnostic[]) {
   return diagnostics.map((d) => ({
     severity: severityMap[d.severity ?? 1] ?? 8,
     message: d.message,
-    startLineNumber: d.range.start.line + 1,
-    startColumn: d.range.start.character + 1,
-    endLineNumber: d.range.end.line + 1,
-    endColumn: d.range.end.character + 1,
+    ...toMonacoRange(d.range),
   }));
 }
 
@@ -104,18 +140,32 @@ export function setDiagnosticsHandler(handler: (uri: string, markers: ReturnType
   onDiagnostics = (uri, diagnostics) => handler(uri, diagnosticsToMarkers(diagnostics));
 }
 
+let semanticTokensLegend: SemanticTokensLegend | null = null;
+
+interface InitializeResult {
+  capabilities?: {
+    semanticTokensProvider?: { legend?: SemanticTokensLegend };
+  };
+}
+
 async function connect(): Promise<MessageConnection> {
-  const connection = createMessageConnection(new TauriMessageReader(), new TauriMessageWriter());
+  const reader = new TauriMessageReader();
+  const connection = createMessageConnection(reader, new TauriMessageWriter());
   connection.onNotification("textDocument/publishDiagnostics", (params: PublishDiagnosticsParams) => {
     onDiagnostics?.(params.uri, params.diagnostics);
   });
+  connection.onError(([error]) => console.error("[lsp] connection error", error));
+  connection.onClose(() => console.error("[lsp] connection closed"));
+  connection.onUnhandledNotification((n) => console.warn("[lsp] unhandled notification", n));
   connection.listen();
+  await reader.ready;
 
-  await connection.sendRequest("initialize", {
+  const result = await connection.sendRequest<InitializeResult>("initialize", {
     processId: null,
     rootUri: null,
     capabilities: {},
   });
+  semanticTokensLegend = result.capabilities?.semanticTokensProvider?.legend ?? null;
   connection.sendNotification("initialized", {});
 
   return connection;
@@ -126,6 +176,13 @@ function getConnection(): Promise<MessageConnection> {
   return connectionPromise;
 }
 
+/** Resolves once the handshake has completed and the server's semantic
+ * token legend (token type/modifier names, positional) is known. */
+export async function getSemanticTokensLegend(): Promise<SemanticTokensLegend | null> {
+  await getConnection();
+  return semanticTokensLegend;
+}
+
 // The editor must stay usable even if the in-process LSP never comes up (or
 // hiccups on one message), so every notification here is fire-and-forget.
 export async function notifyDidOpen(uri: string, languageId: string, text: string) {
@@ -134,8 +191,8 @@ export async function notifyDidOpen(uri: string, languageId: string, text: strin
     connection.sendNotification("textDocument/didOpen", {
       textDocument: { uri, languageId, version: 1, text },
     });
-  } catch {
-    // ignored 
+  } catch (e) {
+    console.error("[lsp] didOpen failed", e);
   }
 }
 
@@ -150,8 +207,8 @@ export async function notifyDidChange(uri: string, text: string) {
       textDocument: { uri, version },
       contentChanges: [{ text }],
     });
-  } catch {
-    // ignored
+  } catch (e) {
+    console.error("[lsp] didChange failed", e);
   }
 }
 
@@ -162,7 +219,51 @@ export async function notifyDidClose(uri: string) {
     connection.sendNotification("textDocument/didClose", {
       textDocument: { uri },
     });
-  } catch {
-    // ignored
+  } catch (e) {
+    console.error("[lsp] didClose failed", e);
+  }
+}
+
+export async function requestFormatting(uri: string, tabSize: number, insertSpaces: boolean): Promise<LspTextEdit[]> {
+  try {
+    const connection = await getConnection();
+    const edits = await connection.sendRequest<LspTextEdit[] | null>("textDocument/formatting", {
+      textDocument: { uri },
+      options: { tabSize, insertSpaces },
+    });
+    return edits ?? [];
+  } catch (e) {
+    console.error("[lsp] formatting request failed", e);
+    return [];
+  }
+}
+
+export async function requestDocumentSymbols(uri: string): Promise<LspSymbolInformation[]> {
+  try {
+    const connection = await getConnection();
+    const symbols = await connection.sendRequest<LspSymbolInformation[] | null>("textDocument/documentSymbol", {
+      textDocument: { uri },
+    });
+    return symbols ?? [];
+  } catch (e) {
+    console.error("[lsp] documentSymbol request failed", e);
+    return [];
+  }
+}
+
+/** Returns the flat, relative-encoded token data exactly as cwl-lsp sends it
+ * (five uints per token: deltaLine, deltaStart, length, tokenType,
+ * tokenModifiersBitset) - the same encoding Monaco's semantic tokens API
+ * expects, so no reshaping is needed beyond `new Uint32Array(...)`. */
+export async function requestSemanticTokens(uri: string): Promise<number[] | null> {
+  try {
+    const connection = await getConnection();
+    const result = await connection.sendRequest<{ data: number[] } | null>("textDocument/semanticTokens/full", {
+      textDocument: { uri },
+    });
+    return result?.data ?? null;
+  } catch (e) {
+    console.error("[lsp] semanticTokens request failed", e);
+    return null;
   }
 }
