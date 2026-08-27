@@ -17,6 +17,16 @@ use crate::graph_types::{
     RunRef, WorkflowView,
 };
 
+/// Loads and reads a workflow's graph. 
+#[tauri::command]
+pub fn get_workflow_graph(path: String) -> Result<WorkflowView, String> {
+    let doc = load_cwl_file(&path, true).map_err(|e| e.to_string())?;
+    let CWLDocument::Workflow(workflow) = doc else {
+        return Err(format!("{path} is not a Workflow document"));
+    };
+    Ok(load_workflow_graph(&workflow, &path))
+}
+
 pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> WorkflowView {
     let path = path.as_ref();
     let mut view = WorkflowView {
