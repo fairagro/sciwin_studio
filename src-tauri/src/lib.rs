@@ -3,6 +3,8 @@ mod lsp;
 mod project;
 mod session;
 mod terminal;
+mod graph;
+mod graph_types;
 
 use files::{cwl_doc_type, get_cwl_files, list_dir, path_exists, read_file, write_file};
 use lsp::lsp_send;

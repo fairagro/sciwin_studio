@@ -7299,6 +7299,7 @@ dependencies = [
 name = "sciwin_studio"
 version = "1.0.0-beta.2"
 dependencies = [
+ "commonwl",
  "cwl-lsp",
  "ignore",
  "portable-pty",
