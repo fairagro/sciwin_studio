@@ -6,10 +6,11 @@
   import { onMount } from "svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import { toSvelteFlow } from "$lib/graph/transform";
-  import { connectWorkflowNodes, disconnectWorkflowNodes } from "$lib/graph/mutation";
+  import { connectWorkflowNodes, deleteWorkflowNode, disconnectWorkflowNodes } from "$lib/graph/mutation";
   import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type MutationError, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
   import WorkflowNode from "./WorkflowNode.svelte";
   import ContextMenu from "./context-menu/Edge.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
 
   const nodeTypes: NodeTypes = { workflow: WorkflowNode };
 
@@ -149,11 +150,83 @@
     }
   }
 
-  async function handleBeforeDelete({ nodes: nodesToDelete, edges: edgesToDelete }: { nodes: Node[]; edges: Edge[] }): Promise<boolean> {
-    if (nodesToDelete.length > 0) {
-      mutationError = { kind: "invalidConnection", reason: "Deleting nodes isn't supported yet." };
+  // Deleting a node that still has connections needs the user's confirmation
+  // before the backend cascades. handleBeforeDelete resolves this promise
+  // once the dialog below is answered, which keeps Svelte Flow's own delete
+  // pipeline (Delete/Backspace, the edge context menu's deleteElements) as
+  // the single path -- nothing here removes the node itself.
+  let deleteConfirm: { node: Node; count: number } | null = $state(null);
+  let deleteDialogOpen = $state(false);
+  let deleteBusy = $state(false);
+  let deleteError = $state<string | null>(null);
+  let resolveDeleteConfirm: ((ok: boolean) => void) | null = null;
+
+  async function deleteNode(target: Node): Promise<boolean> {
+    const tab = workspace.activeTab;
+    const ref = (target.data as FlowNodeData).ref;
+    if (!tab || revision === null) return false;
+
+    try {
+      await deleteWorkflowNode({ path: tab.path, revision, dirty: tab.dirty, node: ref });
+      mutationError = null;
+      return true;
+    } catch (error) {
+      mutationError = error as MutationError;
       return false;
     }
+  }
+
+  function requestNodeDeletion(target: Node, connectionCount: number): Promise<boolean> {
+    if (connectionCount === 0) return deleteNode(target);
+    return new Promise<boolean>((resolve) => {
+      resolveDeleteConfirm = resolve;
+      deleteError = null;
+      deleteConfirm = { node: target, count: connectionCount };
+      deleteDialogOpen = true;
+    });
+  }
+
+  async function confirmNodeDeletion() {
+    if (!deleteConfirm) return;
+    deleteBusy = true;
+    const ok = await deleteNode(deleteConfirm.node);
+    deleteBusy = false;
+    if (ok) {
+      resolveDeleteConfirm?.(true);
+      resolveDeleteConfirm = null;
+      deleteConfirm = null;
+      deleteDialogOpen = false;
+    } else {
+      deleteError = mutationError ? mutationErrorMessage(mutationError) : "Failed to delete.";
+    }
+  }
+
+  function cancelNodeDeletion() {
+    resolveDeleteConfirm?.(false);
+    resolveDeleteConfirm = null;
+    deleteConfirm = null;
+    deleteDialogOpen = false;
+    deleteError = null;
+  }
+
+  async function handleBeforeDelete({ nodes: nodesToDelete, edges: edgesToDelete }: { nodes: Node[]; edges: Edge[] }): Promise<boolean> {
+    if (nodesToDelete.length > 0) {
+      if (nodesToDelete.length > 1) {
+        mutationError = { kind: "invalidConnection", reason: "Delete one node at a time." };
+        return false;
+      }
+      const target = nodesToDelete[0];
+      // Svelte Flow bundles a node's own edges into edgesToDelete alongside
+      // it. An edge unrelated to the node landing in there too means a
+      // mixed selection, which we don't try to reconcile.
+      const stray = edgesToDelete.filter((e) => e.source !== target.id && e.target !== target.id);
+      if (stray.length > 0) {
+        mutationError = { kind: "invalidConnection", reason: "Delete one thing at a time." };
+        return false;
+      }
+      return requestNodeDeletion(target, edgesToDelete.length);
+    }
+
     if (edgesToDelete.length === 0) return true;
     if (edgesToDelete.length > 1) {
       mutationError = { kind: "invalidConnection", reason: "Delete one connection at a time." };
@@ -212,3 +285,14 @@
     <div class="absolute top-2 left-2 rounded border border-border bg-bg-panel px-3 py-1.5 font-mono text-xs text-text-2">Editor has unsaved changes &middot; showing the last saved version</div>
   {/if}
 </div>
+
+<ConfirmDialog
+  bind:open={deleteDialogOpen}
+  title="Delete node"
+  message={deleteConfirm ? `"${(deleteConfirm.node.data as FlowNodeData).label}" is still connected. Deleting it will also remove ${deleteConfirm.count} connection${deleteConfirm.count === 1 ? "" : "s"}.` : ""}
+  confirmLabel="Delete"
+  busy={deleteBusy}
+  error={deleteError}
+  onConfirm={confirmNodeDeletion}
+  onCancel={cancelNodeDeletion}
+/>

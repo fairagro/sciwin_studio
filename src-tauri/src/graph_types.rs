@@ -10,7 +10,8 @@ pub enum NodeKind {
 
 /// Identifies a node by kind *and* bare CWL id, never id alone -- a step named
 /// the same as a workflow input/output must not collide with it. See graph.rs.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+/// Also received back from the frontend as delete_workflow_node's argument.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeRef {
     pub kind: NodeKind,
     pub id: String,

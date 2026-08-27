@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::files::WorkflowChanged;
 use crate::graph::{compute_revision, get_output_type};
-use crate::graph_types::NodeKind;
+use crate::graph_types::{NodeKind, NodeRef};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -266,7 +266,9 @@ fn disconnect_workflow_nodes_impl(
             )?;
         }
         (NodeKind::Step, NodeKind::Output) => {
-            workflow::remove_workflow_output_connection(&mut wf, &from.id, &from.port, &to.id, false)?;
+            workflow::remove_workflow_output_connection(
+                &mut wf, &from.id, &from.port, &to.id, false,
+            )?;
         }
         (from_kind, to_kind) => {
             return Err(MutationError::InvalidConnection {
@@ -288,6 +290,98 @@ pub fn disconnect_workflow_nodes(
     to: ConnectionEndpoint,
 ) -> Result<(), MutationError> {
     let written = disconnect_workflow_nodes_impl(Path::new(&path), &revision, dirty, &from, &to)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+/// Removes every source string anywhere in the workflow, a step's `in:`
+/// source or a workflow output's `outputSource`, that `references` accepts,
+/// collapsing a slot to `None`/`One` the same way
+/// remove_workflow_step_input_source_mut does. Used to cascade-delete a
+/// node's connections as part of removing the node itself. The frontend
+/// confirms that cascade with the user; nothing here re-decides it.
+fn strip_sources_everywhere(workflow: &mut Workflow, references: impl Fn(&str) -> bool) {
+    let collapse = |remaining: Vec<String>| match remaining.len() {
+        0 => None,
+        1 => Some(OneOrMany::One(remaining.into_iter().next().unwrap())),
+        _ => Some(OneOrMany::Many(remaining)),
+    };
+
+    for step in &mut workflow.steps {
+        for wsip in &mut step.r#in {
+            let Some(current) = wsip.source.take() else {
+                continue;
+            };
+            let remaining: Vec<String> = current
+                .into_many()
+                .into_iter()
+                .filter(|s| !references(s))
+                .collect();
+            wsip.source = collapse(remaining);
+        }
+    }
+    for output in &mut workflow.outputs {
+        let Some(current) = output.output_source.take() else {
+            continue;
+        };
+        let remaining: Vec<String> = current
+            .into_many()
+            .into_iter()
+            .filter(|s| !references(s))
+            .collect();
+        output.output_source = collapse(remaining);
+    }
+}
+
+/// Deletes a workflow input, output or step, first stripping every
+/// connection touching it (a workflow output is never itself a source, so
+/// removing its own declaration is the whole cascade for that case). The
+/// frontend confirms this cascade with the user before calling this command
+/// at all; nothing here re-checks or re-asks.
+fn delete_workflow_node_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    node: &NodeRef,
+) -> Result<String, MutationError> {
+    let mut wf = load_for_mutation(path, revision, dirty)?;
+
+    match node.kind {
+        NodeKind::Input => {
+            strip_sources_everywhere(&mut wf, |s| s == node.id);
+            wf.remove_workflow_input_mut(&node.id)
+                .map_err(|e| MutationError::NotFound {
+                    message: e.to_string(),
+                })?;
+        }
+        NodeKind::Output => {
+            wf.remove_workflow_output_mut(&node.id)
+                .map_err(|e| MutationError::NotFound {
+                    message: e.to_string(),
+                })?;
+        }
+        NodeKind::Step => {
+            let prefix = format!("{}/", node.id);
+            strip_sources_everywhere(&mut wf, |s| s.starts_with(&prefix));
+            wf.remove_workflow_step_mut(&node.id)
+                .map_err(|e| MutationError::NotFound {
+                    message: e.to_string(),
+                })?;
+        }
+    }
+
+    save_workflow(&wf, path)
+}
+
+#[tauri::command]
+pub fn delete_workflow_node(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    node: NodeRef,
+) -> Result<(), MutationError> {
+    let written = delete_workflow_node_impl(Path::new(&path), &revision, dirty, &node)?;
     emit_workflow_changed(&app, path, &written);
     Ok(())
 }
@@ -521,6 +615,157 @@ steps:
             result,
             Err(MutationError::IncompatibleTypes { .. })
         ));
+    }
+
+    fn node(kind: NodeKind, id: &str) -> NodeRef {
+        NodeRef::new(kind, id)
+    }
+
+    #[test]
+    fn delete_isolated_step_removes_it() {
+        let (_dir, path, revision) = setup();
+
+        let written =
+            delete_workflow_node_impl(&path, &revision, false, &node(NodeKind::Step, "consumer"))
+                .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert!(wf.steps.iter().all(|s| s.id.as_deref() != Some("consumer")));
+        assert!(
+            wf.steps.iter().any(|s| s.id.as_deref() == Some("producer")),
+            "unrelated step must survive"
+        );
+    }
+
+    #[test]
+    fn delete_connected_input_strips_source_from_step() {
+        let (_dir, path, revision) = setup();
+
+        let written =
+            delete_workflow_node_impl(&path, &revision, false, &node(NodeKind::Input, "image"))
+                .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert!(wf.inputs.iter().all(|i| i.id.as_deref() != Some("image")));
+        let x_source = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("producer"))
+            .and_then(|s| s.r#in.iter().find(|i| i.id.as_deref() == Some("x")))
+            .and_then(|i| i.source.clone());
+        assert_eq!(
+            x_source, None,
+            "the only source on that slot is gone, so it must collapse to None"
+        );
+    }
+
+    #[test]
+    fn delete_connected_step_strips_prefixed_sources_from_other_steps_and_outputs() {
+        let (_dir, path, revision) = setup();
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Step, "consumer", "y"),
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Output, "result", "result"),
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        let written =
+            delete_workflow_node_impl(&path, &revision, false, &node(NodeKind::Step, "producer"))
+                .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert!(wf.steps.iter().all(|s| s.id.as_deref() != Some("producer")));
+        assert_eq!(
+            consumer_y_source(&written),
+            None,
+            "producer/y source must be stripped, not left dangling"
+        );
+        let result_source = wf
+            .outputs
+            .iter()
+            .find(|o| o.id.as_deref() == Some("result"))
+            .and_then(|o| o.output_source.clone());
+        assert_eq!(
+            result_source, None,
+            "outputSource referencing the deleted step must be stripped too"
+        );
+        assert!(
+            wf.outputs.iter().any(|o| o.id.as_deref() == Some("result")),
+            "the output declaration itself is untouched by deleting a step"
+        );
+    }
+
+    #[test]
+    fn delete_output_removes_declaration_without_touching_its_source_step() {
+        let (_dir, path, revision) = setup();
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Output, "result", "result"),
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        let written =
+            delete_workflow_node_impl(&path, &revision, false, &node(NodeKind::Output, "result"))
+                .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert!(wf.outputs.iter().all(|o| o.id.as_deref() != Some("result")));
+        assert!(
+            wf.steps.iter().any(|s| s.id.as_deref() == Some("producer")),
+            "the producer step must survive"
+        );
+    }
+
+    #[test]
+    fn delete_missing_node_errors() {
+        let (_dir, path, revision) = setup();
+
+        let result =
+            delete_workflow_node_impl(&path, &revision, false, &node(NodeKind::Step, "nope"));
+
+        assert!(matches!(result, Err(MutationError::NotFound { .. })));
+    }
+
+    #[test]
+    fn delete_refuses_when_editor_is_dirty() {
+        let (_dir, path, revision) = setup();
+        let before = fs::read_to_string(&path).unwrap();
+
+        let result =
+            delete_workflow_node_impl(&path, &revision, true, &node(NodeKind::Step, "consumer"));
+
+        assert!(matches!(result, Err(MutationError::EditorDirty)));
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            before,
+            "must not touch the file"
+        );
     }
 
     #[test]
