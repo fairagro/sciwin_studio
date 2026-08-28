@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use commonwl::{
     OneOrMany,
     documents::{CWLDocument, StringOrDocument, Workflow},
-    format::format_cwl,
     inputs::InputType,
     load_cwl_file,
     outputs::CommandOutputParameterType,
@@ -119,13 +118,7 @@ fn load_for_mutation(
 
 fn save_workflow(workflow: &Workflow, path: &Path) -> Result<String, MutationError> {
     let doc = CWLDocument::Workflow(workflow.clone());
-    let raw = serde_saphyr::to_string(&doc).map_err(|e| MutationError::Io {
-        message: e.to_string(),
-    })?;
-    let formatted = format_cwl(&raw).map_err(|e| MutationError::Io {
-        message: e.to_string(),
-    })?;
-    std::fs::write(path, &formatted).map_err(io_err)?;
+    let formatted = sciwin::authoring::workflow::save_workflow(&doc, path)?;
     Ok(formatted)
 }
 
