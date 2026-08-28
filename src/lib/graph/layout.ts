@@ -10,3 +10,7 @@ export function getNodeLayout(projectRoot: string, path: string): Promise<Record
 export function saveNodeLayout(projectRoot: string, path: string, positions: Record<string, LayoutPosition>): Promise<void> {
   return invoke("save_node_layout", { projectRoot, path, positions });
 }
+
+export function resetNodeLayout(projectRoot: string, path: string): Promise<void> {
+  return invoke("reset_node_layout", { projectRoot, path });
+}

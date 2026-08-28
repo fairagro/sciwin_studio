@@ -60,6 +60,17 @@ pub fn save_node_layout(
     std::fs::write(&layout_path, json).map_err(|e| e.to_string())
 }
 
+/// Deletes the sidecar outright rather than writing `{}`
+#[tauri::command]
+pub fn reset_node_layout(project_root: String, path: String) -> Result<(), String> {
+    let layout_path = layout_file_path(Path::new(&project_root), Path::new(&path))?;
+    match std::fs::remove_file(&layout_path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +162,51 @@ mod tests {
         let loaded = get_node_layout(project_root, workflow_path).unwrap();
 
         assert!(loaded.contains_key("input/x"));
+    }
+
+    #[test]
+    fn reset_deletes_the_sidecar_file() {
+        let dir = tempdir().unwrap();
+        let project_root = dir.path().to_string_lossy().into_owned();
+        let workflow_path = dir.path().join("workflows").join("main.cwl");
+        std::fs::create_dir_all(workflow_path.parent().unwrap()).unwrap();
+        let workflow_path = workflow_path.to_string_lossy().into_owned();
+
+        let mut positions = HashMap::new();
+        positions.insert("step/plot".to_string(), LayoutPosition { x: 1.0, y: 2.0 });
+        save_node_layout(project_root.clone(), workflow_path.clone(), positions).unwrap();
+
+        let layout_file = layout_file_path(
+            Path::new(&project_root),
+            &dir.path().join("workflows").join("main.cwl"),
+        )
+        .unwrap();
+        assert!(
+            layout_file.exists(),
+            "precondition: sidecar must exist before reset"
+        );
+
+        reset_node_layout(project_root.clone(), workflow_path.clone()).unwrap();
+
+        assert!(!layout_file.exists());
+        assert!(
+            get_node_layout(project_root, workflow_path)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn reset_on_a_never_saved_workflow_is_not_an_error() {
+        let dir = tempdir().unwrap();
+        let project_root = dir.path().to_string_lossy().into_owned();
+        let workflow_path = dir
+            .path()
+            .join("workflows")
+            .join("main.cwl")
+            .to_string_lossy()
+            .into_owned();
+
+        assert!(reset_node_layout(project_root, workflow_path).is_ok());
     }
 }

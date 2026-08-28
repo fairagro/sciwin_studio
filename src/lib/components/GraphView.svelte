@@ -1,13 +1,14 @@
 <script lang="ts">
-  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection, type OnConnectEnd } from "@xyflow/svelte";
+  import { SvelteFlow, Background, Controls, ControlButton, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection, type OnConnectEnd } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+  import { Broom } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import { toSvelteFlow } from "$lib/graph/transform";
   import { addWorkflowStepNode, connectWorkflowNodes, deleteWorkflowNode, disconnectWorkflowNodes } from "$lib/graph/mutation";
-  import { getNodeLayout, saveNodeLayout } from "$lib/graph/layout";
+  import { getNodeLayout, saveNodeLayout, resetNodeLayout } from "$lib/graph/layout";
   import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type LayoutPosition, type MutationError, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
   import WorkflowNode from "./WorkflowNode.svelte";
   import ContextMenu from "./context-menu/Edge.svelte";
@@ -107,6 +108,21 @@
       await saveNodeLayout(projectRoot, tab.path, layoutPositions);
     } catch (error) {
       console.error("Failed to save node layout:", error);
+    }
+  }
+
+  // Deletes the sidecar and reloads, so every node goes back to dagre's
+  // placement instead of whatever was manually dragged.
+  async function handleResetLayout() {
+    const tab = workspace.activeTab;
+    const projectRoot = workspace.projectPath;
+    if (!tab || !projectRoot) return;
+
+    try {
+      await resetNodeLayout(projectRoot, tab.path);
+      await loadGraph(tab.path);
+    } catch (error) {
+      console.error("Failed to reset node layout:", error);
     }
   }
 
@@ -376,7 +392,11 @@
     {#if edge_menu}
       <ContextMenu onclick={handlePaneClick} id={edge_menu.id} top={edge_menu.top} left={edge_menu.left} right={edge_menu.right} bottom={edge_menu.bottom} />
     {/if}
-    <Controls />
+    <Controls>
+      <ControlButton onclick={handleResetLayout} title="Reset to auto layout">
+        <Broom size={14} strokeWidth={1.8} />
+      </ControlButton>
+    </Controls>
     <MiniMap bgColor="var(--color-bg-panel)" maskColor="rgba(18, 19, 22, 0.65)" />
   </SvelteFlow>
   {#if loadError}

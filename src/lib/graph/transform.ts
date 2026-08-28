@@ -43,8 +43,7 @@ function estimateSize(node: FlowNode): { width: number; height: number } {
   return { width, height };
 }
 
-// Dagre always lays out every node  a saved position then overrides dagre's guess for that
-// one node. 
+// Dagre lays out every node; a saved position overrides it for that node.
 export function toSvelteFlow(view: WorkflowView, savedPositions: Record<string, LayoutPosition> = {}): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "LR", nodesep: 24, ranksep: 72 });
