@@ -24,6 +24,10 @@
   let children = $state<FsEntry[] | null>(untrack(() => entry.children) ?? null);
   let loading = $state(false);
 
+  // Only .cwl files make sense as a graph step; dropping anything else onto
+  // the canvas would just fail add_workflow_step_node's load_cwl_file call.
+  const isDraggableTool = $derived(!entry.isDir && entry.name.toLowerCase().endsWith(".cwl"));
+
   async function toggle() {
     if (!entry.isDir) {
       workspace.openTab(entry.path, entry.name);
@@ -36,6 +40,14 @@
       loading = false;
     }
   }
+
+  // Custom MIME type keeps this from being picked up by unrelated drop
+  // targets (e.g. the Monaco editor's own file-open drop handling).
+  function onDragStart(event: DragEvent) {
+    if (!isDraggableTool || !event.dataTransfer) return;
+    event.dataTransfer.setData("application/x-sciwin-cwl-path", entry.path);
+    event.dataTransfer.effectAllowed = "copy";
+  }
 </script>
 
 <div>
@@ -46,6 +58,8 @@
       ? 'bg-fairagro-mid-500/14 text-text'
       : ''}"
     style="padding-left: {depth * 14 + 4}px"
+    draggable={isDraggableTool}
+    ondragstart={onDragStart}
     onclick={toggle}
   >
     {#if entry.isDir}

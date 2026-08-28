@@ -85,6 +85,7 @@ export type MutationError =
   | { kind: "incompatibleTypes"; reason: string }
   | { kind: "invalidConnection"; reason: string }
   | { kind: "notFound"; message: string }
+  | { kind: "duplicateId"; id: string }
   | { kind: "io"; message: string };
 
 export function mutationErrorMessage(error: MutationError): string {
@@ -101,5 +102,7 @@ export function mutationErrorMessage(error: MutationError): string {
     case "notFound":
     case "io":
       return error.message;
+    case "duplicateId":
+      return `A node named "${error.id}" already exists.`;
   }
 }

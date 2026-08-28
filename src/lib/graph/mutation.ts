@@ -16,9 +16,15 @@ export interface DeleteNodeArgs {
   node: NodeRef;
 }
 
-// All three reject with a MutationError (see types.ts), not a string -- the
-// backend's #[serde(tag = "kind")] error enum, not invoke()'s usual
-// stringly-typed rejection.
+export interface AddStepNodeArgs {
+  path: string;
+  revision: string;
+  dirty: boolean;
+  toolPath: string;
+  name: string;
+}
+
+
 export function connectWorkflowNodes(args: MutationArgs): Promise<void> {
   return invoke("connect_workflow_nodes", { ...args });
 }
@@ -29,4 +35,8 @@ export function disconnectWorkflowNodes(args: MutationArgs): Promise<void> {
 
 export function deleteWorkflowNode(args: DeleteNodeArgs): Promise<void> {
   return invoke("delete_workflow_node", { ...args });
+}
+
+export function addWorkflowStepNode(args: AddStepNodeArgs): Promise<void> {
+  return invoke("add_workflow_step_node", { ...args });
 }

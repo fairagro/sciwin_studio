@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection, type EdgeEvents } from "@xyflow/svelte";
+  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import { toSvelteFlow } from "$lib/graph/transform";
-  import { connectWorkflowNodes, deleteWorkflowNode, disconnectWorkflowNodes } from "$lib/graph/mutation";
+  import { addWorkflowStepNode, connectWorkflowNodes, deleteWorkflowNode, disconnectWorkflowNodes } from "$lib/graph/mutation";
   import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type MutationError, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
   import WorkflowNode from "./WorkflowNode.svelte";
   import ContextMenu from "./context-menu/Edge.svelte";
@@ -120,6 +120,52 @@
     if (!node) return null;
     const ref = (node.data as FlowNodeData).ref;
     return { kind: ref.kind, id: ref.id, port };
+  }
+
+  const CWL_DRAG_MIME = "application/x-sciwin-cwl-path";
+
+  function handleDragOver(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes(CWL_DRAG_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  // A dropped tool named e.g. "plot" becomes step id "plot", or "plot_2",
+  // "plot_3", ... if that id is already on the canvas -- add_workflow_step_node
+  // refuses outright on a collision rather than silently no-op'ing.
+  function uniqueStepName(base: string): string {
+    const taken = new Set(nodes.map((n) => n.id));
+    if (!taken.has(`step/${base}`)) return base;
+    for (let i = 2; ; i++) {
+      if (!taken.has(`step/${base}_${i}`)) return `${base}_${i}`;
+    }
+  }
+
+  async function handleDrop(event: DragEvent) {
+    const toolPath = event.dataTransfer?.getData(CWL_DRAG_MIME);
+    if (!toolPath) return;
+    event.preventDefault();
+
+    const tab = workspace.activeTab;
+    if (!tab || revision === null) return;
+    if (toolPath === tab.path) {
+      mutationError = { kind: "invalidConnection", reason: "A workflow can't be a step of itself." };
+      return;
+    }
+
+    const base =
+      toolPath
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.cwl$/i, "") || "step";
+    const name = uniqueStepName(base);
+
+    try {
+      await addWorkflowStepNode({ path: tab.path, revision, dirty: tab.dirty, toolPath, name });
+      mutationError = null;
+    } catch (error) {
+      mutationError = error as MutationError;
+    }
   }
 
   const isValidConnection: IsValidConnection = (candidate) => {
@@ -250,7 +296,8 @@
   }
 </script>
 
-<div class="relative h-full w-full" bind:this={containerEl} bind:clientWidth bind:clientHeight>
+<!-- svelte-ignore a11y_no_static_element_interactions -- drop zone for dragging a tool from the Sidebar onto the graph; the canvas itself is SvelteFlow's, this div only relays drops -->
+<div class="relative h-full w-full" bind:this={containerEl} bind:clientWidth bind:clientHeight ondragover={handleDragOver} ondrop={handleDrop}>
   <SvelteFlow
     bind:nodes
     bind:edges
