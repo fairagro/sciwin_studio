@@ -47,6 +47,9 @@ pub enum MutationError {
     NotFound {
         message: String,
     },
+    DuplicateId {
+        id: String,
+    },
     Io {
         message: String,
     },
@@ -382,6 +385,46 @@ pub fn delete_workflow_node(
     node: NodeRef,
 ) -> Result<(), MutationError> {
     let written = delete_workflow_node_impl(Path::new(&path), &revision, dirty, &node)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn add_workflow_step_node_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    tool_path: &str,
+    name: &str,
+) -> Result<String, MutationError> {
+    let mut wf = load_for_mutation(path, revision, dirty)?;
+
+    if wf.has_step(name) {
+        return Err(MutationError::DuplicateId {
+            id: name.to_string(),
+        });
+    }
+
+    let tool_path = Path::new(tool_path);
+    let doc = load_cwl_file(tool_path, true).map_err(|e| MutationError::Io {
+        message: e.to_string(),
+    })?;
+
+    workflow::add_workflow_step(&mut wf, path, name, tool_path, &doc)?;
+
+    save_workflow(&wf, path)
+}
+
+#[tauri::command]
+pub fn add_workflow_step_node(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    tool_path: String,
+    name: String,
+) -> Result<(), MutationError> {
+    let written =
+        add_workflow_step_node_impl(Path::new(&path), &revision, dirty, &tool_path, &name)?;
     emit_workflow_changed(&app, path, &written);
     Ok(())
 }
@@ -814,5 +857,115 @@ steps:
             Some(OneOrMany::One("extra".to_string())),
             "removing one source must leave the other, collapsed back to `One`"
         );
+    }
+
+    #[test]
+    fn add_step_node_registers_step_with_no_connections() {
+        let (dir, path, revision) = setup();
+        let tool_path = dir.path().join("producer.cwl");
+
+        let written = add_workflow_step_node_impl(
+            &path,
+            &revision,
+            false,
+            tool_path.to_str().unwrap(),
+            "new_producer",
+        )
+        .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let step = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("new_producer"))
+            .expect("step must be registered");
+        assert!(
+            step.r#in.is_empty(),
+            "a freshly dropped step has nothing wired yet"
+        );
+        assert_eq!(
+            step.out.len(),
+            1,
+            "outputs come pre-populated from the tool's own declaration"
+        );
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            written,
+            "must actually be on disk, not just returned"
+        );
+    }
+
+    #[test]
+    fn add_step_node_refuses_duplicate_id() {
+        let (dir, path, revision) = setup();
+        let tool_path = dir.path().join("consumer.cwl");
+
+        let result = add_workflow_step_node_impl(
+            &path,
+            &revision,
+            false,
+            tool_path.to_str().unwrap(),
+            "consumer",
+        );
+
+        assert!(matches!(result, Err(MutationError::DuplicateId { id }) if id == "consumer"));
+    }
+
+    #[test]
+    fn add_step_node_refuses_when_editor_is_dirty() {
+        let (dir, path, revision) = setup();
+        let before = fs::read_to_string(&path).unwrap();
+        let tool_path = dir.path().join("producer.cwl");
+
+        let result = add_workflow_step_node_impl(
+            &path,
+            &revision,
+            true,
+            tool_path.to_str().unwrap(),
+            "new_producer",
+        );
+
+        assert!(matches!(result, Err(MutationError::EditorDirty)));
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            before,
+            "must not touch the file"
+        );
+    }
+
+    #[test]
+    fn add_step_node_refuses_on_stale_revision() {
+        let (dir, path, _revision) = setup();
+        let before = fs::read_to_string(&path).unwrap();
+        let tool_path = dir.path().join("producer.cwl");
+
+        let result = add_workflow_step_node_impl(
+            &path,
+            "not-the-real-revision",
+            false,
+            tool_path.to_str().unwrap(),
+            "new_producer",
+        );
+
+        assert!(matches!(result, Err(MutationError::StaleRevision)));
+        assert_eq!(fs::read_to_string(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn add_step_node_errors_on_missing_tool_file() {
+        let (dir, path, revision) = setup();
+        let tool_path = dir.path().join("does_not_exist.cwl");
+
+        let result = add_workflow_step_node_impl(
+            &path,
+            &revision,
+            false,
+            tool_path.to_str().unwrap(),
+            "new_step",
+        );
+
+        assert!(matches!(result, Err(MutationError::Io { .. })));
     }
 }
