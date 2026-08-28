@@ -2,11 +2,6 @@
 
 import type { NodeKind, PickValue } from "./types";
 
-// `!` baked into each literal, not appended at the call site: Tailwind's
-// scanner needs the complete token verbatim in source to generate it, and
-// can't see through a template-literal or function-call concatenation.
-// xyflow's own .svelte-flow__handle rule sets background-color at equal
-// class specificity and wins on source order alone without this.
 const BG_BY_TYPE: Record<string, string> = {
   file: "bg-green-400!",
   directory: "bg-blue-400!",

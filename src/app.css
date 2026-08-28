@@ -94,3 +94,13 @@ body {
     background: var(--border);
     border-radius: 4px;
 }
+
+/* A noodle's per-type stroke color/width is set inline (styling.ts), which
+   otherwise buries xyflow's own .selected stroke-color rule -- equal
+   specificity, same source order. Widening + a white halo on top, rather
+   than recoloring, keeps the type color legible while still making the
+   selection state obvious, ComfyUI-style. */
+.svelte-flow__edge.selected .svelte-flow__edge-path {
+    stroke-width: 4px !important;
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff);
+}

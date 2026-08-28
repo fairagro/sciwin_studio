@@ -3,8 +3,6 @@ import { Position, type Node, type Edge } from "@xyflow/svelte";
 import type { FlowNode, FlowPort, LayoutPosition, WorkflowView } from "./types";
 import { edgeStrokeColor, pickValueEdgeStyle, pickValueLabel, pickValueLabelStyle } from "./styling";
 
-// Slightly thicker than xyflow's 1px default, so a noodle's color reads at a
-// glance rather than needing a zoom-in.
 const EDGE_STROKE_WIDTH = 2;
 
 // Sized from label/port text length

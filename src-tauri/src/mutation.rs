@@ -5,9 +5,12 @@ use commonwl::{
     documents::{CWLDocument, StringOrDocument, Workflow},
     inputs::InputType,
     load_cwl_file,
-    outputs::CommandOutputParameterType,
+    outputs::{CommandOutputParameterType, PickValueMethod},
 };
-use sciwin::authoring::workflow::{self, WorkflowSlot, check_slot_compatibility};
+use sciwin::authoring::workflow::{
+    self, WorkflowSlot, check_slot_compatibility, check_slot_compatibility_scattered,
+    input_type_is_array,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
@@ -42,6 +45,19 @@ pub enum MutationError {
     },
     InvalidConnection {
         reason: String,
+    },
+    /// The source is array-shaped but the target port is a plain scalar --
+    /// legal only if the step scatters over that port. Sent instead of
+    /// `IncompatibleTypes` so the frontend can offer to enable scatter
+    /// rather than just refusing outright.
+    NeedsScatterConfirmation {
+        port: String,
+    },
+    /// The target port already has a source and this connection would add a
+    /// second one -- CWL needs a `pickValue` strategy to resolve multiple
+    /// sources into one scalar value at runtime.
+    NeedsPickValue {
+        port: String,
     },
     NotFound {
         message: String,
@@ -196,12 +212,33 @@ fn emit_workflow_changed(app: &AppHandle, path: String, contents: &str) {
 /// for `workflow-changed` without a second disk read. Split from the
 /// `#[tauri::command]` shim below so tests can call it without a live
 /// `AppHandle`, same as `lsp::take_frame` vs `lsp_send`.
+/// True once `step_id` already scatters over `port`.
+fn step_already_scatters(wf: &Workflow, step_id: &str, port: &str) -> bool {
+    wf.steps
+        .iter()
+        .find(|s| s.id.as_deref() == Some(step_id))
+        .and_then(|s| s.scatter.as_ref())
+        .is_some_and(|scatter| scatter.as_many().iter().any(|p| p == port))
+}
+
+/// True once `step_id`'s `port` input already has at least one source
+/// wired to it.
+fn step_input_already_sourced(wf: &Workflow, step_id: &str, port: &str) -> bool {
+    wf.steps
+        .iter()
+        .find(|s| s.id.as_deref() == Some(step_id))
+        .and_then(|s| s.r#in.iter().find(|i| i.id.as_deref() == Some(port)))
+        .is_some_and(|i| i.source.is_some())
+}
+
 fn connect_workflow_nodes_impl(
     path: &Path,
     revision: &str,
     dirty: bool,
     from: &ConnectionEndpoint,
     to: &ConnectionEndpoint,
+    scatter_confirmed: bool,
+    pick_value: Option<PickValueMethod>,
 ) -> Result<String, MutationError> {
     let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
     let path = path.as_path();
@@ -215,19 +252,50 @@ fn connect_workflow_nodes_impl(
         (NodeKind::Step, NodeKind::Step) => {
             let to_type = step_input_type(&wf, path, &to.id, &to.port)?;
             let from_type = step_output_type(&wf, path, &from.id, &from.port)?;
-            if !check_slot_compatibility(&to_type, &from_type) {
-                return Err(MutationError::IncompatibleTypes {
-                    reason: format!(
-                        "{}/{} does not accept {}/{}",
-                        to.id, to.port, from.id, from.port
-                    ),
+
+            let direct_ok = check_slot_compatibility(&to_type, &from_type);
+            let mut needs_scatter = false;
+
+            if !direct_ok {
+                if !check_slot_compatibility_scattered(&to_type, &from_type) {
+                    return Err(MutationError::IncompatibleTypes {
+                        reason: format!(
+                            "{}/{} does not accept {}/{}",
+                            to.id, to.port, from.id, from.port
+                        ),
+                    });
+                }
+                // Legal without asking again once the step already scatters
+                // over this port; otherwise the caller needs to confirm.
+                if !step_already_scatters(&wf, &to.id, &to.port) {
+                    if !scatter_confirmed {
+                        return Err(MutationError::NeedsScatterConfirmation {
+                            port: to.port.clone(),
+                        });
+                    }
+                    needs_scatter = true;
+                }
+            } else if !input_type_is_array(&to_type)
+                && step_input_already_sourced(&wf, &to.id, &to.port)
+                && pick_value.is_none()
+            {
+                return Err(MutationError::NeedsPickValue {
+                    port: to.port.clone(),
                 });
             }
+
             let from_tool = resolve_step_tool_path(&wf, path, &from.id)?;
             let to_tool = resolve_step_tool_path(&wf, path, &to.id)?;
             let from_slot = WorkflowSlot::new(&from_tool, &from.id, &from.port);
             let to_slot = WorkflowSlot::new(&to_tool, &to.id, &to.port);
             workflow::add_workflow_step_connection(&mut wf, path, from_slot, to_slot)?;
+
+            if needs_scatter {
+                workflow::add_step_to_scatter_mut(&mut wf, &to.id, &to.port)?;
+            }
+            if let Some(method) = pick_value {
+                workflow::set_step_pick_value_mut(&mut wf, &to.id, &to.port, method)?;
+            }
         }
         (NodeKind::Step, NodeKind::Output) => {
             let from_tool = resolve_step_tool_path(&wf, path, &from.id)?;
@@ -252,8 +320,18 @@ pub fn connect_workflow_nodes(
     dirty: bool,
     from: ConnectionEndpoint,
     to: ConnectionEndpoint,
+    scatter_confirmed: bool,
+    pick_value: Option<PickValueMethod>,
 ) -> Result<(), MutationError> {
-    let written = connect_workflow_nodes_impl(Path::new(&path), &revision, dirty, &from, &to)?;
+    let written = connect_workflow_nodes_impl(
+        Path::new(&path),
+        &revision,
+        dirty,
+        &from,
+        &to,
+        scatter_confirmed,
+        pick_value,
+    )?;
     emit_workflow_changed(&app, path, &written);
     Ok(())
 }
@@ -533,7 +611,8 @@ steps:
         let from = endpoint(NodeKind::Step, "producer", "out");
         let to = endpoint(NodeKind::Step, "consumer", "y");
 
-        let written = connect_workflow_nodes_impl(&path, &revision, false, &from, &to).unwrap();
+        let written =
+            connect_workflow_nodes_impl(&path, &revision, false, &from, &to, false, None).unwrap();
 
         assert_eq!(
             consumer_y_source(&written),
@@ -553,7 +632,7 @@ steps:
         let from = endpoint(NodeKind::Step, "producer", "out");
         let to = endpoint(NodeKind::Step, "consumer", "y");
 
-        let result = connect_workflow_nodes_impl(&path, &revision, true, &from, &to);
+        let result = connect_workflow_nodes_impl(&path, &revision, true, &from, &to, false, None);
 
         assert!(matches!(result, Err(MutationError::EditorDirty)));
         assert_eq!(
@@ -570,7 +649,15 @@ steps:
         let from = endpoint(NodeKind::Step, "producer", "out");
         let to = endpoint(NodeKind::Step, "consumer", "y");
 
-        let result = connect_workflow_nodes_impl(&path, "not-the-real-revision", false, &from, &to);
+        let result = connect_workflow_nodes_impl(
+            &path,
+            "not-the-real-revision",
+            false,
+            &from,
+            &to,
+            false,
+            None,
+        );
 
         assert!(matches!(result, Err(MutationError::StaleRevision)));
         assert_eq!(fs::read_to_string(&path).unwrap(), before);
@@ -616,7 +703,7 @@ steps:
 
         let from = endpoint(NodeKind::Step, "producer", "out");
         let to = endpoint(NodeKind::Step, "consumer", "y");
-        let result = connect_workflow_nodes_impl(&path, &revision, false, &from, &to);
+        let result = connect_workflow_nodes_impl(&path, &revision, false, &from, &to, false, None);
 
         assert!(matches!(
             result,
@@ -665,12 +752,238 @@ steps:
             false,
             &endpoint(NodeKind::Input, "image", "image"),
             &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
         );
 
         assert!(matches!(
             result,
             Err(MutationError::IncompatibleTypes { .. })
         ));
+    }
+
+    #[test]
+    fn connect_step_to_step_array_into_scalar_requires_scatter_confirmation() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("producer.cwl"),
+            r"
+cwlVersion: v1.2
+class: CommandLineTool
+inputs: []
+outputs:
+- id: out
+  type: string[]
+baseCommand: echo
+",
+        )
+        .unwrap();
+        fs::write(dir.path().join("consumer.cwl"), CONSUMER_TOOL).unwrap(); // y: string
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs: []
+outputs: []
+steps:
+- id: producer
+  in: []
+  out:
+  - out
+  run: producer.cwl
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let from = endpoint(NodeKind::Step, "producer", "out");
+        let to = endpoint(NodeKind::Step, "consumer", "y");
+
+        let result = connect_workflow_nodes_impl(&path, &revision, false, &from, &to, false, None);
+        assert!(matches!(
+            result,
+            Err(MutationError::NeedsScatterConfirmation { ref port }) if port == "y"
+        ));
+
+        let written =
+            connect_workflow_nodes_impl(&path, &revision, false, &from, &to, true, None).unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let consumer = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("consumer"))
+            .unwrap();
+        assert_eq!(consumer.scatter, Some(OneOrMany::One("y".to_string())));
+        assert_eq!(
+            consumer
+                .r#in
+                .iter()
+                .find(|i| i.id.as_deref() == Some("y"))
+                .and_then(|i| i.source.clone()),
+            Some(OneOrMany::One("producer/out".to_string()))
+        );
+    }
+
+    #[test]
+    fn connect_step_to_step_array_into_already_scattered_scalar_needs_no_confirmation() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("producer.cwl"),
+            r"
+cwlVersion: v1.2
+class: CommandLineTool
+inputs: []
+outputs:
+- id: out
+  type: string[]
+baseCommand: echo
+",
+        )
+        .unwrap();
+        fs::write(dir.path().join("consumer.cwl"), CONSUMER_TOOL).unwrap(); // y: string
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs: []
+outputs: []
+steps:
+- id: producer
+  in: []
+  out:
+  - out
+  run: producer.cwl
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+  scatter: y
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let from = endpoint(NodeKind::Step, "producer", "out");
+        let to = endpoint(NodeKind::Step, "consumer", "y");
+
+        // No scatter_confirmed needed -- the step already scatters over `y`.
+        let written =
+            connect_workflow_nodes_impl(&path, &revision, false, &from, &to, false, None).unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let consumer = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("consumer"))
+            .unwrap();
+        assert_eq!(
+            consumer
+                .r#in
+                .iter()
+                .find(|i| i.id.as_deref() == Some("y"))
+                .and_then(|i| i.source.clone()),
+            Some(OneOrMany::One("producer/out".to_string()))
+        );
+    }
+
+    #[test]
+    fn connect_step_to_step_second_source_into_scalar_requires_pick_value() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("producer.cwl"), PRODUCER_TOOL).unwrap();
+        fs::write(dir.path().join("producer2.cwl"), PRODUCER_TOOL).unwrap();
+        fs::write(dir.path().join("consumer.cwl"), CONSUMER_TOOL).unwrap();
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+- id: image
+  type: string
+outputs: []
+steps:
+- id: producer
+  in:
+  - id: x
+    source: image
+  out:
+  - out
+  run: producer.cwl
+- id: producer2
+  in:
+  - id: x
+    source: image
+  out:
+  - out
+  run: producer2.cwl
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        let from2 = endpoint(NodeKind::Step, "producer2", "out");
+        let to = endpoint(NodeKind::Step, "consumer", "y");
+        let result = connect_workflow_nodes_impl(&path, &revision, false, &from2, &to, false, None);
+        assert!(matches!(
+            result,
+            Err(MutationError::NeedsPickValue { ref port }) if port == "y"
+        ));
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &from2,
+            &to,
+            false,
+            Some(PickValueMethod::FirstNonNull),
+        )
+        .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let y = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("consumer"))
+            .unwrap()
+            .r#in
+            .iter()
+            .find(|i| i.id.as_deref() == Some("y"))
+            .unwrap();
+        assert_eq!(
+            y.source,
+            Some(OneOrMany::Many(vec![
+                "producer/out".to_string(),
+                "producer2/out".to_string()
+            ]))
+        );
+        assert_eq!(y.pick_value, Some(PickValueMethod::FirstNonNull));
     }
 
     fn node(kind: NodeKind, id: &str) -> NodeRef {
@@ -729,6 +1042,8 @@ steps:
             false,
             &endpoint(NodeKind::Step, "producer", "out"),
             &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
         )
         .unwrap();
         let revision = compute_revision(written.as_bytes());
@@ -738,6 +1053,8 @@ steps:
             false,
             &endpoint(NodeKind::Step, "producer", "out"),
             &endpoint(NodeKind::Output, "result", "result"),
+            false,
+            None,
         )
         .unwrap();
         let revision = compute_revision(written.as_bytes());
@@ -780,6 +1097,8 @@ steps:
             false,
             &endpoint(NodeKind::Step, "producer", "out"),
             &endpoint(NodeKind::Output, "result", "result"),
+            false,
+            None,
         )
         .unwrap();
         let revision = compute_revision(written.as_bytes());
@@ -834,6 +1153,8 @@ steps:
             false,
             &endpoint(NodeKind::Step, "producer", "out"),
             &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
         )
         .unwrap();
         let revision = compute_revision(written.as_bytes());
@@ -844,6 +1165,8 @@ steps:
             false,
             &endpoint(NodeKind::Input, "extra", "extra"),
             &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
         )
         .unwrap();
         assert_eq!(

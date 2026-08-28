@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionEndpoint, NodeRef } from "./types";
+import type { ConnectionEndpoint, NodeRef, PickValue } from "./types";
 
 export interface MutationArgs {
   path: string;
@@ -7,6 +7,15 @@ export interface MutationArgs {
   dirty: boolean;
   from: ConnectionEndpoint;
   to: ConnectionEndpoint;
+}
+
+export interface ConnectArgs extends MutationArgs {
+  // Set once the user has answered the corresponding dialog in GraphView --
+  // omitted (false/null) on the first attempt, which is what lets the
+  // backend refuse with needsScatterConfirmation/needsPickValue instead of
+  // silently guessing.
+  scatterConfirmed?: boolean;
+  pickValue?: PickValue | null;
 }
 
 export interface DeleteNodeArgs {
@@ -25,8 +34,12 @@ export interface AddStepNodeArgs {
 }
 
 
-export function connectWorkflowNodes(args: MutationArgs): Promise<void> {
-  return invoke("connect_workflow_nodes", { ...args });
+export function connectWorkflowNodes(args: ConnectArgs): Promise<void> {
+  return invoke("connect_workflow_nodes", {
+    ...args,
+    scatterConfirmed: args.scatterConfirmed ?? false,
+    pickValue: args.pickValue ?? null,
+  });
 }
 
 export function disconnectWorkflowNodes(args: MutationArgs): Promise<void> {

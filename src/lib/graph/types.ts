@@ -91,7 +91,9 @@ export type MutationError =
   | { kind: "invalidConnection"; reason: string }
   | { kind: "notFound"; message: string }
   | { kind: "duplicateId"; id: string }
-  | { kind: "io"; message: string };
+  | { kind: "io"; message: string }
+  | { kind: "needsScatterConfirmation"; port: string }
+  | { kind: "needsPickValue"; port: string };
 
 export function mutationErrorMessage(error: MutationError): string {
   switch (error.kind) {
@@ -109,5 +111,9 @@ export function mutationErrorMessage(error: MutationError): string {
       return error.message;
     case "duplicateId":
       return `A node named "${error.id}" already exists.`;
+    case "needsScatterConfirmation":
+      return `${error.port} declined scatter.`;
+    case "needsPickValue":
+      return `${error.port} needs a pickValue strategy to accept another source.`;
   }
 }

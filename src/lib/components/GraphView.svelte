@@ -9,10 +9,11 @@
   import { toSvelteFlow } from "$lib/graph/transform";
   import { addWorkflowStepNode, connectWorkflowNodes, deleteWorkflowNode, disconnectWorkflowNodes } from "$lib/graph/mutation";
   import { getNodeLayout, saveNodeLayout, resetNodeLayout } from "$lib/graph/layout";
-  import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type LayoutPosition, type MutationError, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
+  import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type LayoutPosition, type MutationError, type PickValue, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
   import WorkflowNode from "./WorkflowNode.svelte";
   import ContextMenu from "./context-menu/Edge.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import PickValueDialog from "./PickValueDialog.svelte";
 
   const nodeTypes: NodeTypes = { workflow: WorkflowNode };
 
@@ -218,21 +219,90 @@
     return (from.kind === "input" && to.kind === "step") || (from.kind === "step" && to.kind === "step") || (from.kind === "step" && to.kind === "output");
   };
 
-  async function performConnect(from: ConnectionEndpoint, to: ConnectionEndpoint): Promise<boolean> {
+  // A step-to-step connection can come back asking for user input instead
+  // of a flat refusal: an array source into a not-yet-scattered scalar port
+  // (needsScatterConfirmation), or a second source landing on an
+  // already-fed scalar port (needsPickValue). Both are resolved by showing
+  // the matching dialog and, if confirmed, retrying with the answer -- a
+  // decline leaves the original error as the shown refusal, same as any
+  // other IncompatibleTypes case.
+  let scatterConfirm: { port: string } | null = $state(null);
+  let scatterDialogOpen = $state(false);
+  let resolveScatterConfirm: ((ok: boolean) => void) | null = null;
+
+  let pickValueConfirm: { port: string } | null = $state(null);
+  let pickValueDialogOpen = $state(false);
+  let resolvePickValueConfirm: ((value: PickValue | null) => void) | null = null;
+
+  async function performConnect(
+    from: ConnectionEndpoint,
+    to: ConnectionEndpoint,
+    opts: { scatterConfirmed?: boolean; pickValue?: PickValue | null } = {}
+  ): Promise<boolean> {
     const tab = workspace.activeTab;
     if (!tab || revision === null) return false;
 
     try {
-      await connectWorkflowNodes({ path: tab.path, revision, dirty: tab.dirty, from, to });
+      await connectWorkflowNodes({ path: tab.path, revision, dirty: tab.dirty, from, to, ...opts });
       mutationError = null;
       return true;
       // the resulting workflow-changed event reloads the graph with the
       // real edge (correct id, styling, dagre layout), so any optimistic
       // one gets overwritten wholesale rather than reconciled.
     } catch (error) {
-      mutationError = error as MutationError;
+      const err = error as MutationError;
+      mutationError = err;
+
+      if (err.kind === "needsScatterConfirmation") {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          resolveScatterConfirm = resolve;
+          scatterConfirm = { port: err.port };
+          scatterDialogOpen = true;
+        });
+        if (!confirmed) return false;
+        return performConnect(from, to, { ...opts, scatterConfirmed: true });
+      }
+
+      if (err.kind === "needsPickValue") {
+        const chosen = await new Promise<PickValue | null>((resolve) => {
+          resolvePickValueConfirm = resolve;
+          pickValueConfirm = { port: err.port };
+          pickValueDialogOpen = true;
+        });
+        if (!chosen) return false;
+        return performConnect(from, to, { ...opts, pickValue: chosen });
+      }
+
       return false;
     }
+  }
+
+  function confirmScatter() {
+    resolveScatterConfirm?.(true);
+    resolveScatterConfirm = null;
+    scatterConfirm = null;
+    scatterDialogOpen = false;
+  }
+
+  function cancelScatter() {
+    resolveScatterConfirm?.(false);
+    resolveScatterConfirm = null;
+    scatterConfirm = null;
+    scatterDialogOpen = false;
+  }
+
+  function choosePickValue(value: PickValue) {
+    resolvePickValueConfirm?.(value);
+    resolvePickValueConfirm = null;
+    pickValueConfirm = null;
+    pickValueDialogOpen = false;
+  }
+
+  function cancelPickValue() {
+    resolvePickValueConfirm?.(null);
+    resolvePickValueConfirm = null;
+    pickValueConfirm = null;
+    pickValueDialogOpen = false;
   }
 
   async function handleConnect(connection: Connection) {
@@ -421,4 +491,20 @@
   error={deleteError}
   onConfirm={confirmNodeDeletion}
   onCancel={cancelNodeDeletion}
+/>
+
+<ConfirmDialog
+  bind:open={scatterDialogOpen}
+  title="Enable scatter?"
+  message={scatterConfirm ? `"${scatterConfirm.port}" only accepts a single value, but the source is an array. Scatter over "${scatterConfirm.port}" to run this step once per element?` : ""}
+  confirmLabel="Scatter"
+  onConfirm={confirmScatter}
+  onCancel={cancelScatter}
+/>
+
+<PickValueDialog
+  bind:open={pickValueDialogOpen}
+  port={pickValueConfirm?.port ?? ""}
+  onChoose={choosePickValue}
+  onCancel={cancelPickValue}
 />
