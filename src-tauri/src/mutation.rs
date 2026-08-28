@@ -60,6 +60,9 @@ impl From<sciwin::authoring::AuthoringError> for MutationError {
             sciwin::authoring::AuthoringError::IncompatibleType { message } => {
                 MutationError::IncompatibleTypes { reason: message }
             }
+            sciwin::authoring::AuthoringError::IO(e) => MutationError::Io {
+                message: e.to_string(),
+            },
             e => MutationError::InvalidConnection {
                 reason: e.to_string(),
             },
