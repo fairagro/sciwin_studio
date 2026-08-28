@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection } from "@xyflow/svelte";
+  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge, type NodeTypes, type Connection, type IsValidConnection, type OnConnectEnd } from "@xyflow/svelte";
   import "@xyflow/svelte/dist/style.css";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -132,12 +132,14 @@
 
   // A dropped tool named e.g. "plot" becomes step id "plot", or "plot_2",
   // "plot_3", ... if that id is already on the canvas -- add_workflow_step_node
-  // refuses outright on a collision rather than silently no-op'ing.
-  function uniqueStepName(base: string): string {
+  // refuses outright on a collision rather than silently no-op'ing. Also used
+  // for the input/output nodes spawned by dragging a step port out to empty
+  // canvas, keyed by their own "input/"/"output/" namespace.
+  function uniqueNodeId(kind: "step" | "input" | "output", base: string): string {
     const taken = new Set(nodes.map((n) => n.id));
-    if (!taken.has(`step/${base}`)) return base;
+    if (!taken.has(`${kind}/${base}`)) return base;
     for (let i = 2; ; i++) {
-      if (!taken.has(`step/${base}_${i}`)) return `${base}_${i}`;
+      if (!taken.has(`${kind}/${base}_${i}`)) return `${base}_${i}`;
     }
   }
 
@@ -158,7 +160,7 @@
         .split(/[\\/]/)
         .pop()
         ?.replace(/\.cwl$/i, "") || "step";
-    const name = uniqueStepName(base);
+    const name = uniqueNodeId("step", base);
 
     try {
       await addWorkflowStepNode({ path: tab.path, revision, dirty: tab.dirty, toolPath, name });
@@ -175,26 +177,56 @@
     return (from.kind === "input" && to.kind === "step") || (from.kind === "step" && to.kind === "step") || (from.kind === "step" && to.kind === "output");
   };
 
-  async function handleConnect(connection: Connection) {
+  async function performConnect(from: ConnectionEndpoint, to: ConnectionEndpoint): Promise<boolean> {
     const tab = workspace.activeTab;
-    const from = endpointOf(connection.source, connection.sourceHandle);
-    const to = endpointOf(connection.target, connection.targetHandle);
-    if (!tab || revision === null || !from || !to) return;
+    if (!tab || revision === null) return false;
 
     try {
       await connectWorkflowNodes({ path: tab.path, revision, dirty: tab.dirty, from, to });
       mutationError = null;
+      return true;
       // the resulting workflow-changed event reloads the graph with the
-      // real edge (correct id, styling, dagre layout), so the optimistic
-      // one below gets overwritten wholesale rather than reconciled.
+      // real edge (correct id, styling, dagre layout), so any optimistic
+      // one gets overwritten wholesale rather than reconciled.
     } catch (error) {
       mutationError = error as MutationError;
+      return false;
+    }
+  }
+
+  async function handleConnect(connection: Connection) {
+    const from = endpointOf(connection.source, connection.sourceHandle);
+    const to = endpointOf(connection.target, connection.targetHandle);
+    if (!from || !to) return;
+
+    const ok = await performConnect(from, to);
+    if (!ok) {
       // Svelte Flow's Handle component adds this edge to the bound array
       // the instant the drag completes, before onconnect even runs -- undo
       // that on refusal, or it sits there rendered until the next reload.
       edges = edges.filter((e) => !(e.source === connection.source && e.target === connection.target && e.sourceHandle === connection.sourceHandle && e.targetHandle === connection.targetHandle));
     }
   }
+
+  const handleConnectEnd: OnConnectEnd = async (event, state) => {
+    if (state.toHandle) return; // landed on a real handle; onconnect handles that
+    const target = event.target as HTMLElement | null;
+    if (!target?.classList.contains("svelte-flow__pane")) return; // e.g. dropped on a node body
+
+    const fromNode = state.fromNode;
+    const fromHandle = state.fromHandle;
+    if (!fromNode || !fromHandle?.id) return;
+    const from = endpointOf(fromNode.id, fromHandle.id);
+    if (!from || from.kind !== "step") return;
+
+    if (fromHandle.type === "source") {
+      const name = uniqueNodeId("output", from.port);
+      await performConnect(from, { kind: "output", id: name, port: name });
+    } else {
+      const name = uniqueNodeId("input", from.port);
+      await performConnect({ kind: "input", id: name, port: name }, from);
+    }
+  };
 
   // Deleting a node that still has connections needs the user's confirmation
   // before the backend cascades. handleBeforeDelete resolves this promise
@@ -304,6 +336,7 @@
     {nodeTypes}
     {isValidConnection}
     onconnect={handleConnect}
+    onconnectend={handleConnectEnd}
     onpaneclick={handlePaneClick}
     onpointerdown={handlePaneClick}
     onedgecontextmenu={handleEdgeContextMenu}
