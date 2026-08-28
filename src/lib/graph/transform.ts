@@ -1,7 +1,11 @@
 import dagre from "@dagrejs/dagre";
 import { Position, type Node, type Edge } from "@xyflow/svelte";
 import type { FlowNode, FlowPort, LayoutPosition, WorkflowView } from "./types";
-import { pickValueEdgeStyle, pickValueLabel, pickValueLabelStyle } from "./styling";
+import { edgeStrokeColor, pickValueEdgeStyle, pickValueLabel, pickValueLabelStyle } from "./styling";
+
+// Slightly thicker than xyflow's 1px default, so a noodle's color reads at a
+// glance rather than needing a zoom-in.
+const EDGE_STROKE_WIDTH = 2;
 
 // Sized from label/port text length
 const CHAR_WIDTH = 6.5;
@@ -14,17 +18,17 @@ function portLabelLength(port: FlowPort): number {
   return port.id.length + port.dataType.length + 2;
 }
 
-// `nodeId::portId` -> that input port, so edges landing on a pickValue
-// port can be found without an O(nodes * ports) scan per edge.
-function inputPortKey(nodeId: string, portId: string): string {
+// `nodeId::portId` -> that port, so an edge's endpoints can be found without
+// an O(nodes * ports) scan per edge.
+function portKey(nodeId: string, portId: string): string {
   return `${nodeId}::${portId}`;
 }
 
-function buildInputPortIndex(nodes: FlowNode[]): Map<string, FlowPort> {
+function buildPortIndex(nodes: FlowNode[], ports: (n: FlowNode) => FlowPort[]): Map<string, FlowPort> {
   const index = new Map<string, FlowPort>();
   for (const node of nodes) {
-    for (const port of node.data.inputs) {
-      index.set(inputPortKey(node.id, port.id), port);
+    for (const port of ports(node)) {
+      index.set(portKey(node.id, port.id), port);
     }
   }
   return index;
@@ -76,19 +80,23 @@ export function toSvelteFlow(view: WorkflowView, savedPositions: Record<string, 
     };
   });
 
-  const inputPorts = buildInputPortIndex(view.nodes);
+  const inputPorts = buildPortIndex(view.nodes, (n) => n.data.inputs);
+  const outputPorts = buildPortIndex(view.nodes, (n) => n.data.outputs);
 
   const edges: Edge[] = view.edges.map((e) => {
-    const pickValue = inputPorts.get(inputPortKey(e.target, e.targetHandle))?.pickValue ?? null;
+    const pickValue = inputPorts.get(portKey(e.target, e.targetHandle))?.pickValue ?? null;
+    // The source port's type, not the target's -- what the noodle is
+    // actually carrying, same as the port dot it leaves from.
+    const dataType = outputPorts.get(portKey(e.source, e.sourceHandle))?.dataType ?? "";
+    const style = `stroke: ${edgeStrokeColor(dataType)}; stroke-width: ${EDGE_STROKE_WIDTH}px;${pickValue ? ` ${pickValueEdgeStyle}` : ""}`;
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       sourceHandle: e.sourceHandle,
       targetHandle: e.targetHandle,
-      ...(pickValue
-        ? { style: pickValueEdgeStyle, label: pickValueLabel(pickValue), labelStyle: pickValueLabelStyle }
-        : {}),
+      style,
+      ...(pickValue ? { label: pickValueLabel(pickValue), labelStyle: pickValueLabelStyle } : {}),
     };
   });
 

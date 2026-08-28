@@ -382,8 +382,10 @@ fn input_type_label(t: &OneOrMany<InputType>) -> String {
 fn single_input_type_label(t: &InputType) -> String {
     match t {
         InputType::CWLType(cwl) => cwl.to_string(),
+        // "File[]", not the item type lost: the frontend colors a port by
+        // its item type, falling back to gray only for record/enum items.
         InputType::InputSchema(schema) => match schema.as_ref() {
-            InputSchema::Array(_) => "array".to_string(),
+            InputSchema::Array(arr) => format!("{}[]", input_type_label(&arr.items)),
             InputSchema::Record(_) => "record".to_string(),
             InputSchema::Enum(_) => "enum".to_string(),
         },
@@ -391,16 +393,20 @@ fn single_input_type_label(t: &InputType) -> String {
     }
 }
 
+fn output_types_label(items: &OneOrMany<CommandOutputType>) -> String {
+    items
+        .as_many()
+        .iter()
+        .map(single_output_type_label)
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 fn output_type_label(t: &CommandOutputParameterType) -> String {
     match t {
         CommandOutputParameterType::Stdout => "stdout".to_string(),
         CommandOutputParameterType::Stderr => "stderr".to_string(),
-        CommandOutputParameterType::CommandOutputType(types) => types
-            .as_many()
-            .iter()
-            .map(single_output_type_label)
-            .collect::<Vec<_>>()
-            .join(" | "),
+        CommandOutputParameterType::CommandOutputType(types) => output_types_label(types),
     }
 }
 
@@ -408,7 +414,7 @@ fn single_output_type_label(t: &CommandOutputType) -> String {
     match t {
         CommandOutputType::CWLType(cwl) => cwl.to_string(),
         CommandOutputType::CommandOutputSchema(schema) => match schema.as_ref() {
-            CommandOutputSchema::Array(_) => "array".to_string(),
+            CommandOutputSchema::Array(arr) => format!("{}[]", output_types_label(&arr.items)),
             CommandOutputSchema::Record(_) => "record".to_string(),
             CommandOutputSchema::Enum(_) => "enum".to_string(),
         },
@@ -761,5 +767,50 @@ steps:
             && e.source_handle == "exists"
             && e.target == "step/syft"
             && e.target_handle == "skip"));
+    }
+
+    // Regression test: an array port's item type must survive into the
+    // label, not collapse to the bare string "array" -- the frontend colors
+    // a port by its item type and needs it to tell a `File[]` port from a
+    // `string[]` one.
+    #[test]
+    fn test_array_type_label_keeps_the_item_type() {
+        let yaml = r"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+- id: images
+  type: File[]
+outputs:
+- id: names
+  type: string[]
+  outputSource: pick/names
+steps:
+- id: pick
+  in:
+  - id: images
+    source: images
+  out:
+  - names
+  run:
+    class: CommandLineTool
+    inputs:
+    - id: images
+      type: File[]
+    outputs:
+    - id: names
+      type: string[]
+";
+        let CWLDocument::Workflow(workflow) = commonwl::from_str(yaml).unwrap() else {
+            panic!("Expected a workflow document")
+        };
+        let view = load_workflow_graph(&workflow, "workflow.cwl");
+
+        let input = view.nodes.iter().find(|n| n.id == "input/images").unwrap();
+        assert_eq!(input.data.outputs[0].data_type, "File[]");
+
+        let step = view.nodes.iter().find(|n| n.id == "step/pick").unwrap();
+        let names_out = step.data.outputs.iter().find(|p| p.id == "names").unwrap();
+        assert_eq!(names_out.data_type, "string[]");
     }
 }

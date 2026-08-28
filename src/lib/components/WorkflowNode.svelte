@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Handle, Position, type Node as XYNode, type NodeProps } from "@xyflow/svelte";
   import type { FlowNodeData } from "$lib/graph/types";
-  import { nodeHeaderClass, portBg, portBorder, portGeometry, portRing } from "$lib/graph/styling";
+  import { nodeHeaderClass, portArrayRing, portBg, portBorder, portGeometry, portRing } from "$lib/graph/styling";
 
   let { data: nodeData, selected }: NodeProps<XYNode<FlowNodeData, "workflow">> = $props();
 
@@ -61,7 +61,7 @@
       <div class="flex h-6.5 items-center justify-end gap-1.5 px-2">
         <span class="truncate text-[11px] text-text-2">{port.id}</span>
         <span class="shrink-0 text-[9px] text-text-3">{port.dataType}</span>
-        <Handle type="source" position={Position.Right} id={port.id} class="static! -mr-1.5! h-2.5! w-2.5! shrink-0! transform-none! {portBg(port.dataType)} {portGeometry(port.dataType)} {portBorder(port.dataType)} {portRing}" />
+        <Handle type="source" position={Position.Right} id={port.id} class="static! -mr-1.5! h-2.5! w-2.5! shrink-0! transform-none! {portBg(port.dataType)} {portGeometry(port.dataType)} {portBorder(port.dataType)} {portRing} {portArrayRing(port.dataType)}" />
       </div>
     {/each}
 
@@ -69,7 +69,7 @@
       {@const scattered = nodeData.scatter.includes(port.id)}
       <div class="flex h-6.5 items-center justify-start gap-1.5 px-2">
         <span class="-ml-1.5 inline-flex shrink-0 items-center justify-center rounded-full {scattered ? 'border border-dashed border-fairagro-mid-500 p-0.5' : ''}" title={scattered ? scatterTitle() : undefined}>
-          <Handle type="target" position={Position.Left} id={port.id} class="static! h-2.5! w-2.5! shrink-0! transform-none! {portBg(port.dataType)} {portGeometry(port.dataType)} {portBorder(port.dataType)} {portRing}" />
+          <Handle type="target" position={Position.Left} id={port.id} class="static! h-2.5! w-2.5! shrink-0! transform-none! {portBg(port.dataType)} {portGeometry(port.dataType)} {portBorder(port.dataType)} {portRing} {portArrayRing(port.dataType)}" />
         </span>
         <span class="shrink-0 text-[9px] text-text-3">{port.dataType}</span>
         <span class="truncate text-[11px] text-text-2">{port.id}</span>
