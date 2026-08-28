@@ -8,7 +8,8 @@ use commonwl::{
     outputs::{CommandOutputParameterType, PickValueMethod},
 };
 use sciwin::authoring::workflow::{
-    self, WorkflowSlot, check_slot_compatibility, check_slot_compatibility_scattered,
+    self, ScatterProducerFit, WorkflowSlot, check_slot_compatibility,
+    check_slot_compatibility_scattered, check_slot_compatibility_scattered_producer,
     input_type_is_array,
 };
 use serde::{Deserialize, Serialize};
@@ -257,23 +258,40 @@ fn connect_workflow_nodes_impl(
             let mut needs_scatter = false;
 
             if !direct_ok {
-                if !check_slot_compatibility_scattered(&to_type, &from_type) {
-                    return Err(MutationError::IncompatibleTypes {
-                        reason: format!(
-                            "{}/{} does not accept {}/{}",
-                            to.id, to.port, from.id, from.port
-                        ),
-                    });
-                }
-                // Legal without asking again once the step already scatters
-                // over this port; otherwise the caller needs to confirm.
-                if !step_already_scatters(&wf, &to.id, &to.port) {
-                    if !scatter_confirmed {
-                        return Err(MutationError::NeedsScatterConfirmation {
+                match check_slot_compatibility_scattered_producer(&to_type, &from_type) {
+                    ScatterProducerFit::Exact => {
+                        if !check_slot_compatibility_scattered(&to_type, &from_type) {
+                            return Err(MutationError::IncompatibleTypes {
+                                reason: format!(
+                                    "{}/{} does not accept {}/{}",
+                                    to.id, to.port, from.id, from.port
+                                ),
+                            });
+                        }
+                        // Legal without asking again once the step already scatters
+                        // over this port; otherwise the caller needs to confirm.
+                        if !step_already_scatters(&wf, &to.id, &to.port) {
+                            if !scatter_confirmed {
+                                return Err(MutationError::NeedsScatterConfirmation {
+                                    port: to.port.clone(),
+                                });
+                            }
+                            needs_scatter = true;
+                        }
+                    }
+                    ScatterProducerFit::NeedsPickValueToDropNulls => {
+                        return Err(MutationError::NeedsPickValue {
                             port: to.port.clone(),
                         });
                     }
-                    needs_scatter = true;
+                    ScatterProducerFit::Incompatible => {
+                        return Err(MutationError::IncompatibleTypes {
+                            reason: format!(
+                                "{}/{} does not accept {}/{}",
+                                to.id, to.port, from.id, from.port
+                            ),
+                        });
+                    }
                 }
             } else if !input_type_is_array(&to_type)
                 && step_input_already_sourced(&wf, &to.id, &to.port)
@@ -313,6 +331,7 @@ fn connect_workflow_nodes_impl(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn connect_workflow_nodes(
     app: AppHandle,
     path: String,
