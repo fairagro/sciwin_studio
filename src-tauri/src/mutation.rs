@@ -10,7 +10,7 @@ use commonwl::{
 use sciwin::authoring::workflow::{
     self, ScatterProducerFit, WorkflowSlot, check_slot_compatibility,
     check_slot_compatibility_scattered, check_slot_compatibility_scattered_producer,
-    input_type_is_array,
+    input_type_is_array, is_scattered_array_of,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -248,7 +248,59 @@ fn connect_workflow_nodes_impl(
         (NodeKind::Input, NodeKind::Step) => {
             let to_tool = resolve_step_tool_path(&wf, path, &to.id)?;
             let to_slot = WorkflowSlot::new(&to_tool, &to.id, &to.port);
+            let to_type = step_input_type(&wf, path, &to.id, &to.port)?;
+
+            let mut needs_scatter = false;
+
+            // An existing workflow input reused for a second step port can
+            // legitimately have a different type than that port declares: an
+            // array-of-scalar input feeding a step that scatters over this
+            // slot, same shape check as the step-to-step scatter path.
+            if let Some(existing) = wf
+                .inputs
+                .iter()
+                .find(|i| i.id.as_deref() == Some(from.id.as_str()))
+            {
+                let existing_type = existing.r#type.clone();
+                if existing_type != to_type {
+                    if !is_scattered_array_of(&existing_type, &to_type) {
+                        return Err(MutationError::IncompatibleTypes {
+                            reason: format!(
+                                "input {} already has type {:?}, but {}/{} expects {:?}",
+                                from.id, existing_type, to.id, to.port, to_type
+                            ),
+                        });
+                    }
+                    if !step_already_scatters(&wf, &to.id, &to.port) {
+                        if !scatter_confirmed {
+                            return Err(MutationError::NeedsScatterConfirmation {
+                                port: to.port.clone(),
+                            });
+                        }
+                        needs_scatter = true;
+                    }
+                }
+            }
+
+            if !input_type_is_array(&to_type)
+                && step_input_already_sourced(&wf, &to.id, &to.port)
+                && pick_value.is_none()
+            {
+                return Err(MutationError::NeedsPickValue {
+                    port: to.port.clone(),
+                });
+            }
+
+            // Scatter must be marked before add_workflow_input_connection
+            // runs, since that function re-checks the same shape and only
+            // tolerates the mismatch once the step already scatters over it.
+            if needs_scatter {
+                workflow::add_step_to_scatter_mut(&mut wf, &to.id, &to.port)?;
+            }
             workflow::add_workflow_input_connection(&mut wf, path, &from.id, to_slot)?;
+            if let Some(method) = pick_value {
+                workflow::set_step_pick_value_mut(&mut wf, &to.id, &to.port, method)?;
+            }
         }
         (NodeKind::Step, NodeKind::Step) => {
             let to_type = step_input_type(&wf, path, &to.id, &to.port)?;
@@ -258,33 +310,32 @@ fn connect_workflow_nodes_impl(
             let mut needs_scatter = false;
 
             if !direct_ok {
-                match check_slot_compatibility_scattered_producer(&to_type, &from_type) {
-                    ScatterProducerFit::Exact => {
-                        if !check_slot_compatibility_scattered(&to_type, &from_type) {
-                            return Err(MutationError::IncompatibleTypes {
-                                reason: format!(
-                                    "{}/{} does not accept {}/{}",
-                                    to.id, to.port, from.id, from.port
-                                ),
-                            });
-                        }
-                        // Legal without asking again once the step already scatters
-                        // over this port; otherwise the caller needs to confirm.
-                        if !step_already_scatters(&wf, &to.id, &to.port) {
-                            if !scatter_confirmed {
-                                return Err(MutationError::NeedsScatterConfirmation {
+                // Two distinct scatter shapes can make an otherwise-mismatched
+                // connection legal: `from` is itself scattered, so every output
+                // it produces is array-wrapped one level (checked first, since
+                // it only applies when `from` actually scatters); or `to` isn't
+                // scattered yet but could be, once confirmed, since `from`'s
+                // output is genuinely array-shaped and `to`'s declared type is
+                // the scalar item type.
+                let mut resolved = false;
+
+                if workflow::step_is_scattered(&wf, &from.id) {
+                    match check_slot_compatibility_scattered_producer(&to_type, &from_type) {
+                        ScatterProducerFit::Exact => resolved = true,
+                        ScatterProducerFit::NeedsPickValueToDropNulls => {
+                            if pick_value.is_none() {
+                                return Err(MutationError::NeedsPickValue {
                                     port: to.port.clone(),
                                 });
                             }
-                            needs_scatter = true;
+                            resolved = true;
                         }
+                        ScatterProducerFit::Incompatible => {}
                     }
-                    ScatterProducerFit::NeedsPickValueToDropNulls => {
-                        return Err(MutationError::NeedsPickValue {
-                            port: to.port.clone(),
-                        });
-                    }
-                    ScatterProducerFit::Incompatible => {
+                }
+
+                if !resolved {
+                    if !check_slot_compatibility_scattered(&to_type, &from_type) {
                         return Err(MutationError::IncompatibleTypes {
                             reason: format!(
                                 "{}/{} does not accept {}/{}",
@@ -292,8 +343,20 @@ fn connect_workflow_nodes_impl(
                             ),
                         });
                     }
+                    // Legal without asking again once the step already scatters
+                    // over this port; otherwise the caller needs to confirm.
+                    if !step_already_scatters(&wf, &to.id, &to.port) {
+                        if !scatter_confirmed {
+                            return Err(MutationError::NeedsScatterConfirmation {
+                                port: to.port.clone(),
+                            });
+                        }
+                        needs_scatter = true;
+                    }
                 }
-            } else if !input_type_is_array(&to_type)
+            }
+
+            if !input_type_is_array(&to_type)
                 && step_input_already_sourced(&wf, &to.id, &to.port)
                 && pick_value.is_none()
             {
@@ -1005,6 +1068,159 @@ steps:
         assert_eq!(y.pick_value, Some(PickValueMethod::FirstNonNull));
     }
 
+    #[test]
+    fn connect_input_to_step_array_into_scalar_requires_scatter_confirmation() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("consumer.cwl"), CONSUMER_TOOL).unwrap(); // y: string
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+- id: names
+  type: string[]
+outputs: []
+steps:
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let from = endpoint(NodeKind::Input, "names", "names");
+        let to = endpoint(NodeKind::Step, "consumer", "y");
+
+        let result = connect_workflow_nodes_impl(&path, &revision, false, &from, &to, false, None);
+        assert!(matches!(
+            result,
+            Err(MutationError::NeedsScatterConfirmation { ref port }) if port == "y"
+        ));
+
+        let written =
+            connect_workflow_nodes_impl(&path, &revision, false, &from, &to, true, None).unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let consumer = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("consumer"))
+            .unwrap();
+        assert_eq!(consumer.scatter, Some(OneOrMany::One("y".to_string())));
+        assert_eq!(
+            consumer
+                .r#in
+                .iter()
+                .find(|i| i.id.as_deref() == Some("y"))
+                .and_then(|i| i.source.clone()),
+            Some(OneOrMany::One("names".to_string()))
+        );
+    }
+
+    #[test]
+    fn connect_step_to_step_scattered_producer_with_optional_output_requires_pick_value() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("producer.cwl"),
+            r#"
+cwlVersion: v1.2
+class: CommandLineTool
+inputs:
+- id: x
+  type: string
+outputs:
+- id: out
+  type: ["null", File]
+baseCommand: echo
+"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("consumer.cwl"),
+            r"
+cwlVersion: v1.2
+class: CommandLineTool
+inputs:
+- id: configs
+  type: File[]
+outputs:
+- id: done
+  type: string
+baseCommand: echo
+",
+        )
+        .unwrap();
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+- id: image
+  type: string[]
+outputs: []
+steps:
+- id: producer
+  in:
+  - id: x
+    source: image
+  out:
+  - out
+  run: producer.cwl
+  scatter: x
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let from = endpoint(NodeKind::Step, "producer", "out");
+        let to = endpoint(NodeKind::Step, "consumer", "configs");
+
+        // Scattered producer output is File|null -- fits File[] only once a
+        // pickValue strategy is set to drop the nulls.
+        let result = connect_workflow_nodes_impl(&path, &revision, false, &from, &to, false, None);
+        assert!(matches!(
+            result,
+            Err(MutationError::NeedsPickValue { ref port }) if port == "configs"
+        ));
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &from,
+            &to,
+            false,
+            Some(PickValueMethod::AllNonNull),
+        )
+        .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let configs = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("consumer"))
+            .unwrap()
+            .r#in
+            .iter()
+            .find(|i| i.id.as_deref() == Some("configs"))
+            .unwrap();
+        assert_eq!(
+            configs.source,
+            Some(OneOrMany::One("producer/out".to_string()))
+        );
+        assert_eq!(configs.pick_value, Some(PickValueMethod::AllNonNull));
+    }
+
     fn node(kind: NodeKind, id: &str) -> NodeRef {
         NodeRef::new(kind, id)
     }
@@ -1178,7 +1394,9 @@ steps:
         .unwrap();
         let revision = compute_revision(written.as_bytes());
 
-        let written = connect_workflow_nodes_impl(
+        // A second source landing on an already-fed scalar slot needs a
+        // pickValue strategy -- refused without one, same as step-to-step.
+        let result = connect_workflow_nodes_impl(
             &path,
             &revision,
             false,
@@ -1186,6 +1404,20 @@ steps:
             &endpoint(NodeKind::Step, "consumer", "y"),
             false,
             None,
+        );
+        assert!(matches!(
+            result,
+            Err(MutationError::NeedsPickValue { ref port }) if port == "y"
+        ));
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Input, "extra", "extra"),
+            &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            Some(PickValueMethod::AllNonNull),
         )
         .unwrap();
         assert_eq!(
