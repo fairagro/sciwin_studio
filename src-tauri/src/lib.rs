@@ -1,4 +1,5 @@
 mod files;
+mod layout;
 mod lsp;
 mod mutation;
 mod project;
@@ -9,6 +10,7 @@ mod graph_types;
 
 use files::{cwl_doc_type, get_cwl_files, list_dir, path_exists, read_file, write_file};
 use graph::get_workflow_graph;
+use layout::{get_node_layout, save_node_layout};
 use lsp::lsp_send;
 use mutation::{
     add_workflow_step_node, connect_workflow_nodes, delete_workflow_node, disconnect_workflow_nodes,
@@ -48,7 +50,9 @@ pub fn run() {
             connect_workflow_nodes,
             disconnect_workflow_nodes,
             delete_workflow_node,
-            add_workflow_step_node
+            add_workflow_step_node,
+            get_node_layout,
+            save_node_layout
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

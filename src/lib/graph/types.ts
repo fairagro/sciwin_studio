@@ -54,6 +54,11 @@ export interface FlowEdge {
   targetHandle: string;
 }
 
+export interface LayoutPosition {
+  x: number;
+  y: number;
+}
+
 export interface WorkflowView {
   nodes: FlowNode[];
   edges: FlowEdge[];

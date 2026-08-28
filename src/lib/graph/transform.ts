@@ -1,6 +1,6 @@
 import dagre from "@dagrejs/dagre";
 import { Position, type Node, type Edge } from "@xyflow/svelte";
-import type { FlowNode, FlowPort, WorkflowView } from "./types";
+import type { FlowNode, FlowPort, LayoutPosition, WorkflowView } from "./types";
 import { pickValueEdgeStyle, pickValueLabel, pickValueLabelStyle } from "./styling";
 
 // Sized from label/port text length
@@ -43,7 +43,9 @@ function estimateSize(node: FlowNode): { width: number; height: number } {
   return { width, height };
 }
 
-export function toSvelteFlow(view: WorkflowView): { nodes: Node[]; edges: Edge[] } {
+// Dagre always lays out every node  a saved position then overrides dagre's guess for that
+// one node. 
+export function toSvelteFlow(view: WorkflowView, savedPositions: Record<string, LayoutPosition> = {}): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "LR", nodesep: 24, ranksep: 72 });
   g.setDefaultEdgeLabel(() => ({}));
@@ -60,13 +62,15 @@ export function toSvelteFlow(view: WorkflowView): { nodes: Node[]; edges: Edge[]
   dagre.layout(g);
 
   const nodes: Node[] = view.nodes.map((n) => {
-    const { x, y } = g.node(n.id);
     const { width, height } = sizes.get(n.id)!;
+    const saved = savedPositions[n.id];
+    const dagrePosition = g.node(n.id);
+    const position = saved ?? { x: dagrePosition.x - width / 2, y: dagrePosition.y - height / 2 };
     return {
       id: n.id,
       type: "workflow",
       data: n.data,
-      position: { x: x - width / 2, y: y - height / 2 },
+      position,
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
       style: `width: ${width}px;`,

@@ -7,7 +7,8 @@
   import { workspace } from "$lib/state/workspace.svelte";
   import { toSvelteFlow } from "$lib/graph/transform";
   import { addWorkflowStepNode, connectWorkflowNodes, deleteWorkflowNode, disconnectWorkflowNodes } from "$lib/graph/mutation";
-  import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type MutationError, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
+  import { getNodeLayout, saveNodeLayout } from "$lib/graph/layout";
+  import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type LayoutPosition, type MutationError, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
   import WorkflowNode from "./WorkflowNode.svelte";
   import ContextMenu from "./context-menu/Edge.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -70,10 +71,16 @@
     }
   });
 
+  // Loaded alongside the graph and kept in sync on every drag, so a save
+  // only ever has to write the full current map, never merge against disk.
+  let layoutPositions: Record<string, LayoutPosition> = {};
+
   async function loadGraph(path: string) {
     try {
       const view = await invoke<WorkflowView>("get_workflow_graph", { path });
-      ({ nodes, edges } = toSvelteFlow(view));
+      const projectRoot = workspace.projectPath;
+      layoutPositions = projectRoot ? await getNodeLayout(projectRoot, path).catch(() => ({})) : {};
+      ({ nodes, edges } = toSvelteFlow(view, layoutPositions));
       revision = view.revision;
       loadError = null;
     } catch (error) {
@@ -82,6 +89,24 @@
       edges = [];
       revision = null;
       loadError = String(error);
+    }
+  }
+
+  // Best-effort: a node's position is a convenience, not workflow content,
+  // so a save failure here shouldn't surface as a MutationError or block
+  // editing the way a failed connect/delete would.
+  async function handleNodeDragStop({ nodes: dragged }: { nodes: Node[] }) {
+    const tab = workspace.activeTab;
+    const projectRoot = workspace.projectPath;
+    if (!tab || !projectRoot || dragged.length === 0) return;
+
+    for (const n of dragged) {
+      layoutPositions[n.id] = { x: n.position.x, y: n.position.y };
+    }
+    try {
+      await saveNodeLayout(projectRoot, tab.path, layoutPositions);
+    } catch (error) {
+      console.error("Failed to save node layout:", error);
     }
   }
 
@@ -337,6 +362,7 @@
     {isValidConnection}
     onconnect={handleConnect}
     onconnectend={handleConnectEnd}
+    onnodedragstop={handleNodeDragStop}
     onpaneclick={handlePaneClick}
     onpointerdown={handlePaneClick}
     onedgecontextmenu={handleEdgeContextMenu}
