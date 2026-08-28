@@ -46,6 +46,7 @@ tokio = { version = "1", features = ["full"] }
 # io
 portable-pty = "0.9"
 ignore = "0.4"
+dunce = "1"
 
 # util
 tower-lsp-server = "0.23"

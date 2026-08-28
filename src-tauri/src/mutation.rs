@@ -80,11 +80,23 @@ fn is_lossy(bytes: &[u8]) -> bool {
     text.contains("$import") || text.contains("$graph")
 }
 
-fn load_for_mutation(path: &Path, revision: &str, dirty: bool) -> Result<Workflow, MutationError> {
+fn canonicalize_arg(path: &Path) -> Result<PathBuf, MutationError> {
+    dunce::canonicalize(path).map_err(|e| MutationError::Io {
+        message: format!("{}: {e}", path.display()),
+    })
+}
+
+/// Loads and parses the workflow, returning its canonicalized path alongside
+fn load_for_mutation(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+) -> Result<(PathBuf, Workflow), MutationError> {
     if dirty {
         return Err(MutationError::EditorDirty);
     }
-    let bytes = std::fs::read(path).map_err(io_err)?;
+    let path = canonicalize_arg(path)?;
+    let bytes = std::fs::read(&path).map_err(io_err)?;
     if compute_revision(&bytes) != revision {
         return Err(MutationError::StaleRevision);
     }
@@ -102,7 +114,7 @@ fn load_for_mutation(path: &Path, revision: &str, dirty: bool) -> Result<Workflo
             reason: "not a Workflow document".into(),
         });
     };
-    Ok(workflow)
+    Ok((path, workflow))
 }
 
 fn save_workflow(workflow: &Workflow, path: &Path) -> Result<String, MutationError> {
@@ -131,7 +143,8 @@ fn resolve_step_tool_path(
         })?;
     match &step.run {
         StringOrDocument::String(rel) => {
-            Ok(workflow_path.parent().unwrap_or(workflow_path).join(rel))
+            let joined = workflow_path.parent().unwrap_or(workflow_path).join(rel);
+            canonicalize_arg(&joined)
         }
         StringOrDocument::Document(_) => Err(MutationError::InvalidConnection {
             reason: format!(
@@ -194,7 +207,8 @@ fn connect_workflow_nodes_impl(
     from: &ConnectionEndpoint,
     to: &ConnectionEndpoint,
 ) -> Result<String, MutationError> {
-    let mut wf = load_for_mutation(path, revision, dirty)?;
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    let path = path.as_path();
 
     match (from.kind, to.kind) {
         (NodeKind::Input, NodeKind::Step) => {
@@ -257,7 +271,7 @@ fn disconnect_workflow_nodes_impl(
     from: &ConnectionEndpoint,
     to: &ConnectionEndpoint,
 ) -> Result<String, MutationError> {
-    let mut wf = load_for_mutation(path, revision, dirty)?;
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
 
     match (from.kind, to.kind) {
         (NodeKind::Input, NodeKind::Step) => {
@@ -280,7 +294,7 @@ fn disconnect_workflow_nodes_impl(
         }
     }
 
-    save_workflow(&wf, path)
+    save_workflow(&wf, &path)
 }
 
 #[tauri::command]
@@ -347,7 +361,7 @@ fn delete_workflow_node_impl(
     dirty: bool,
     node: &NodeRef,
 ) -> Result<String, MutationError> {
-    let mut wf = load_for_mutation(path, revision, dirty)?;
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
 
     match node.kind {
         NodeKind::Input => {
@@ -373,7 +387,7 @@ fn delete_workflow_node_impl(
         }
     }
 
-    save_workflow(&wf, path)
+    save_workflow(&wf, &path)
 }
 
 #[tauri::command]
@@ -396,7 +410,7 @@ fn add_workflow_step_node_impl(
     tool_path: &str,
     name: &str,
 ) -> Result<String, MutationError> {
-    let mut wf = load_for_mutation(path, revision, dirty)?;
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
 
     if wf.has_step(name) {
         return Err(MutationError::DuplicateId {
@@ -404,14 +418,17 @@ fn add_workflow_step_node_impl(
         });
     }
 
-    let tool_path = Path::new(tool_path);
-    let doc = load_cwl_file(tool_path, true).map_err(|e| MutationError::Io {
+    // The frontend sends whatever path the Sidebar's file walk produced; it
+    // must be canonical before it reaches add_workflow_step, same invariant
+    // as workflow_path above.
+    let tool_path = canonicalize_arg(Path::new(tool_path))?;
+    let doc = load_cwl_file(&tool_path, true).map_err(|e| MutationError::Io {
         message: e.to_string(),
     })?;
 
-    workflow::add_workflow_step(&mut wf, path, name, tool_path, &doc)?;
+    workflow::add_workflow_step(&mut wf, &path, name, &tool_path, &doc)?;
 
-    save_workflow(&wf, path)
+    save_workflow(&wf, &path)
 }
 
 #[tauri::command]
@@ -967,5 +984,55 @@ steps:
         );
 
         assert!(matches!(result, Err(MutationError::Io { .. })));
+    }
+
+    #[test]
+    fn add_step_node_writes_a_resolvable_run_path_through_noncanonical_inputs() {
+        let dir = tempdir().unwrap();
+        let tools_dir = dir.path().join("tools");
+        fs::create_dir_all(&tools_dir).unwrap();
+        fs::write(tools_dir.join("producer.cwl"), PRODUCER_TOOL).unwrap();
+
+        let workflows_dir = dir.path().join("workflows");
+        let sub = workflows_dir.join("sub");
+        fs::create_dir_all(&sub).unwrap();
+        let workflow = "cwlVersion: v1.2\nclass: Workflow\ninputs: []\noutputs: []\nsteps: []\n";
+        let real_workflow_path = workflows_dir.join("workflow.cwl");
+        fs::write(&real_workflow_path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        // Same files, each reached through a redundant detour that a plain
+        // "is this absolute" check would let straight through.
+        let noncanonical_workflow = sub.join("..").join("workflow.cwl");
+        let noncanonical_tool = tools_dir.join(".").join("producer.cwl");
+
+        let written = add_workflow_step_node_impl(
+            &noncanonical_workflow,
+            &revision,
+            false,
+            noncanonical_tool.to_str().unwrap(),
+            "producer",
+        )
+        .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let step = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("producer"))
+            .expect("step must be registered");
+        let StringOrDocument::String(run) = &step.run else {
+            panic!("expected a file run:, not an inline document")
+        };
+
+        let resolved = dunce::canonicalize(workflows_dir.join(run))
+            .unwrap_or_else(|e| panic!("run: {run:?} did not resolve back to a real file: {e}"));
+        let real_tool = dunce::canonicalize(tools_dir.join("producer.cwl")).unwrap();
+        assert_eq!(
+            resolved, real_tool,
+            "run: must resolve to the real tool file regardless of how the caller's paths were spelled"
+        );
     }
 }
