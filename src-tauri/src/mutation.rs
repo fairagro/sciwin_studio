@@ -178,23 +178,42 @@ fn resolve_step_tool_path(
     }
 }
 
+/// `None` means `port` isn't declared by the tool -- a synthetic slot added
+/// by `add_step_input_slot_mut`, untyped (`Any`) rather than missing. Still
+/// errors if `port` is neither declared nor an existing `step.in` entry.
 fn step_input_type(
     workflow: &Workflow,
     workflow_path: &Path,
     step_id: &str,
     port: &str,
-) -> Result<OneOrMany<InputType>, MutationError> {
+) -> Result<Option<OneOrMany<InputType>>, MutationError> {
     let tool_path = resolve_step_tool_path(workflow, workflow_path, step_id)?;
     let doc = load_cwl_file(&tool_path, true).map_err(|e| MutationError::Io {
         message: e.to_string(),
     })?;
-    doc.get_inputs()
+    if let Some(i) = doc
+        .get_inputs()
         .iter()
         .find(|i| i.id.as_deref() == Some(port))
-        .map(|i| i.r#type.clone())
-        .ok_or_else(|| MutationError::NotFound {
-            message: format!("{step_id}/{port} not found"),
-        })
+    {
+        return Ok(Some(i.r#type.clone()));
+    }
+    if step_has_input_slot(workflow, step_id, port) {
+        return Ok(None);
+    }
+    Err(MutationError::NotFound {
+        message: format!("{step_id}/{port} not found"),
+    })
+}
+
+/// True once `step_id` has *any* `step.in` entry named `port`, sourced or
+/// not -- used to recognize a synthetic slot even before it's ever wired.
+fn step_has_input_slot(workflow: &Workflow, step_id: &str, port: &str) -> bool {
+    workflow
+        .steps
+        .iter()
+        .find(|s| s.id.as_deref() == Some(step_id))
+        .is_some_and(|s| s.r#in.iter().any(|i| i.id.as_deref() == Some(port)))
 }
 
 fn step_output_type(
@@ -263,37 +282,43 @@ fn connect_workflow_nodes_impl(
 
             let mut needs_scatter = false;
 
-            // An existing workflow input reused for a second step port can
-            // legitimately have a different type than that port declares: an
-            // array-of-scalar input feeding a step that scatters over this
-            // slot, same shape check as the step-to-step scatter path.
-            if let Some(existing) = wf
-                .inputs
-                .iter()
-                .find(|i| i.id.as_deref() == Some(from.id.as_str()))
-            {
-                let existing_type = existing.r#type.clone();
-                if existing_type != to_type {
-                    if !is_scattered_array_of(&existing_type, &to_type) {
-                        return Err(MutationError::IncompatibleTypes {
-                            reason: format!(
-                                "input {} already has type {:?}, but {}/{} expects {:?}",
-                                from.id, existing_type, to.id, to.port, to_type
-                            ),
-                        });
-                    }
-                    if !step_already_scatters(&wf, &to.id, &to.port) {
-                        if !scatter_confirmed {
-                            return Err(MutationError::NeedsScatterConfirmation {
-                                port: to.port.clone(),
+            // `to_type` is `None` for a slot the tool doesn't declare -- an
+            // untyped (`Any`) synthetic input, compatible with anything, so
+            // there's nothing to check against an existing workflow input.
+            if let Some(to_type) = &to_type {
+                // An existing workflow input reused for a second step port can
+                // legitimately have a different type than that port declares: an
+                // array-of-scalar input feeding a step that scatters over this
+                // slot, same shape check as the step-to-step scatter path.
+                if let Some(existing) = wf
+                    .inputs
+                    .iter()
+                    .find(|i| i.id.as_deref() == Some(from.id.as_str()))
+                {
+                    let existing_type = existing.r#type.clone();
+                    if existing_type != *to_type {
+                        if !is_scattered_array_of(&existing_type, to_type) {
+                            return Err(MutationError::IncompatibleTypes {
+                                reason: format!(
+                                    "input {} already has type {:?}, but {}/{} expects {:?}",
+                                    from.id, existing_type, to.id, to.port, to_type
+                                ),
                             });
                         }
-                        needs_scatter = true;
+                        if !step_already_scatters(&wf, &to.id, &to.port) {
+                            if !scatter_confirmed {
+                                return Err(MutationError::NeedsScatterConfirmation {
+                                    port: to.port.clone(),
+                                });
+                            }
+                            needs_scatter = true;
+                        }
                     }
                 }
             }
 
-            if !input_type_is_array(&to_type)
+            let to_is_array = to_type.as_ref().is_some_and(input_type_is_array);
+            if !to_is_array
                 && step_input_already_sourced(&wf, &to.id, &to.port)
                 && pick_value.is_none()
             {
@@ -317,57 +342,63 @@ fn connect_workflow_nodes_impl(
             let to_type = step_input_type(&wf, path, &to.id, &to.port)?;
             let from_type = step_output_type(&wf, path, &from.id, &from.port)?;
 
-            let direct_ok = check_slot_compatibility(&to_type, &from_type);
             let mut needs_scatter = false;
 
-            if !direct_ok {
-                // Two distinct scatter shapes can make an otherwise-mismatched
-                // connection legal: `from` is itself scattered, so every output
-                // it produces is array-wrapped one level (checked first, since
-                // it only applies when `from` actually scatters); or `to` isn't
-                // scattered yet but could be, once confirmed, since `from`'s
-                // output is genuinely array-shaped and `to`'s declared type is
-                // the scalar item type.
-                let mut resolved = false;
+            // `to_type` is `None` for a slot the tool doesn't declare -- an
+            // untyped (`Any`) synthetic input, compatible with any producer.
+            if let Some(to_type) = &to_type {
+                let direct_ok = check_slot_compatibility(to_type, &from_type);
 
-                if workflow::step_is_scattered(&wf, &from.id) {
-                    match check_slot_compatibility_scattered_producer(&to_type, &from_type) {
-                        ScatterProducerFit::Exact => resolved = true,
-                        ScatterProducerFit::NeedsPickValueToDropNulls => {
-                            if pick_value.is_none() {
-                                return Err(MutationError::NeedsPickValue {
+                if !direct_ok {
+                    // Two distinct scatter shapes can make an otherwise-mismatched
+                    // connection legal: `from` is itself scattered, so every output
+                    // it produces is array-wrapped one level (checked first, since
+                    // it only applies when `from` actually scatters); or `to` isn't
+                    // scattered yet but could be, once confirmed, since `from`'s
+                    // output is genuinely array-shaped and `to`'s declared type is
+                    // the scalar item type.
+                    let mut resolved = false;
+
+                    if workflow::step_is_scattered(&wf, &from.id) {
+                        match check_slot_compatibility_scattered_producer(to_type, &from_type) {
+                            ScatterProducerFit::Exact => resolved = true,
+                            ScatterProducerFit::NeedsPickValueToDropNulls => {
+                                if pick_value.is_none() {
+                                    return Err(MutationError::NeedsPickValue {
+                                        port: to.port.clone(),
+                                    });
+                                }
+                                resolved = true;
+                            }
+                            ScatterProducerFit::Incompatible => {}
+                        }
+                    }
+
+                    if !resolved {
+                        if !check_slot_compatibility_scattered(to_type, &from_type) {
+                            return Err(MutationError::IncompatibleTypes {
+                                reason: format!(
+                                    "{}/{} does not accept {}/{}",
+                                    to.id, to.port, from.id, from.port
+                                ),
+                            });
+                        }
+                        // Legal without asking again once the step already scatters
+                        // over this port; otherwise the caller needs to confirm.
+                        if !step_already_scatters(&wf, &to.id, &to.port) {
+                            if !scatter_confirmed {
+                                return Err(MutationError::NeedsScatterConfirmation {
                                     port: to.port.clone(),
                                 });
                             }
-                            resolved = true;
+                            needs_scatter = true;
                         }
-                        ScatterProducerFit::Incompatible => {}
-                    }
-                }
-
-                if !resolved {
-                    if !check_slot_compatibility_scattered(&to_type, &from_type) {
-                        return Err(MutationError::IncompatibleTypes {
-                            reason: format!(
-                                "{}/{} does not accept {}/{}",
-                                to.id, to.port, from.id, from.port
-                            ),
-                        });
-                    }
-                    // Legal without asking again once the step already scatters
-                    // over this port; otherwise the caller needs to confirm.
-                    if !step_already_scatters(&wf, &to.id, &to.port) {
-                        if !scatter_confirmed {
-                            return Err(MutationError::NeedsScatterConfirmation {
-                                port: to.port.clone(),
-                            });
-                        }
-                        needs_scatter = true;
                     }
                 }
             }
 
-            if !input_type_is_array(&to_type)
+            let to_is_array = to_type.as_ref().is_some_and(input_type_is_array);
+            if !to_is_array
                 && step_input_already_sourced(&wf, &to.id, &to.port)
                 && pick_value.is_none()
             {
@@ -2038,6 +2069,71 @@ steps:
         let revision = compute_revision(fs::read_to_string(&path).unwrap().as_bytes());
         let result = add_step_input_slot_impl(&path, &revision, false, "producer", "gate");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn connect_input_to_step_undeclared_slot_succeeds() {
+        let (_dir, path, revision) = setup();
+        let written =
+            add_step_input_slot_impl(&path, &revision, false, "producer", "gate").unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Input, "gate_in", "gate_in"),
+            &endpoint(NodeKind::Step, "producer", "gate"),
+            false,
+            None,
+        )
+        .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let gate = wf
+            .get_step("producer")
+            .unwrap()
+            .r#in
+            .into_iter()
+            .find(|i| i.id.as_deref() == Some("gate"))
+            .unwrap();
+        assert_eq!(gate.source.unwrap().as_many(), vec!["gate_in".to_string()]);
+    }
+
+    #[test]
+    fn connect_step_to_step_undeclared_slot_succeeds() {
+        let (_dir, path, revision) = setup();
+        let written =
+            add_step_input_slot_impl(&path, &revision, false, "consumer", "gate").unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Step, "consumer", "gate"),
+            false,
+            None,
+        )
+        .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let gate = wf
+            .get_step("consumer")
+            .unwrap()
+            .r#in
+            .into_iter()
+            .find(|i| i.id.as_deref() == Some("gate"))
+            .unwrap();
+        assert_eq!(
+            gate.source.unwrap().as_many(),
+            vec!["producer/out".to_string()]
+        );
     }
 
     #[test]
