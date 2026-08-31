@@ -2,15 +2,19 @@ use std::path::{Path, PathBuf};
 
 use commonwl::{
     OneOrMany,
-    documents::{CWLDocument, StringOrDocument, Workflow},
+    documents::{CWLDocument, ScatterMethod, StringOrDocument, Workflow},
     inputs::InputType,
     load_cwl_file,
-    outputs::{CommandOutputParameterType, PickValueMethod},
+    outputs::{CommandOutputParameterType, LinkMergeMethod, PickValueMethod},
 };
 use sciwin::authoring::workflow::{
-    self, ScatterProducerFit, WorkflowSlot, check_slot_compatibility,
-    check_slot_compatibility_scattered, check_slot_compatibility_scattered_producer,
-    input_type_is_array, is_scattered_array_of,
+    self, ScatterProducerFit, WorkflowSlot, add_step_input_slot_mut, add_step_to_scatter_mut,
+    check_slot_compatibility, check_slot_compatibility_scattered,
+    check_slot_compatibility_scattered_producer, clear_step_pick_value_mut,
+    ensure_multiple_input_feature_requirement_mut, input_type_is_array, is_scattered_array_of,
+    remove_step_from_scatter_mut, rename_workflow_step_mut, set_output_link_merge_mut,
+    set_output_pick_value_mut, set_step_input_link_merge_mut, set_step_input_value_from_mut,
+    set_step_pick_value_mut, set_step_scatter_method_mut, set_step_when_mut,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -80,6 +84,13 @@ impl From<sciwin::authoring::AuthoringError> for MutationError {
             sciwin::authoring::AuthoringError::IO(e) => MutationError::Io {
                 message: e.to_string(),
             },
+            sciwin::authoring::AuthoringError::InvalidWorkflowStep { .. }
+            | sciwin::authoring::AuthoringError::InvalidWorkflowInput { .. }
+            | sciwin::authoring::AuthoringError::InvalidWorkflowOutput { .. } => {
+                MutationError::NotFound {
+                    message: e.to_string(),
+                }
+            }
             e => MutationError::InvalidConnection {
                 reason: e.to_string(),
             },
@@ -390,6 +401,7 @@ fn connect_workflow_nodes_impl(
         }
     }
 
+    ensure_multiple_input_feature_requirement_mut(&mut wf);
     save_workflow(&wf, path)
 }
 
@@ -602,9 +614,325 @@ pub fn add_workflow_step_node(
     Ok(())
 }
 
+fn rename_workflow_step_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    new_id: &str,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    let new_id = new_id.trim();
+    if new_id.is_empty() {
+        return Err(MutationError::InvalidConnection {
+            reason: "step id must not be empty".into(),
+        });
+    }
+    if step_id != new_id && wf.has_step(new_id) {
+        return Err(MutationError::DuplicateId {
+            id: new_id.to_string(),
+        });
+    }
+    rename_workflow_step_mut(&mut wf, step_id, new_id)?;
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn rename_workflow_step(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    new_id: String,
+) -> Result<(), MutationError> {
+    let written = rename_workflow_step_impl(Path::new(&path), &revision, dirty, &step_id, &new_id)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn set_step_when_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    expression: Option<String>,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    set_step_when_mut(&mut wf, step_id, expression)?;
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_step_when(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    expression: Option<String>,
+) -> Result<(), MutationError> {
+    let written = set_step_when_impl(Path::new(&path), &revision, dirty, &step_id, expression)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn set_step_scatter_method_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    method: Option<ScatterMethod>,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    set_step_scatter_method_mut(&mut wf, step_id, method)?;
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_step_scatter_method(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    method: Option<ScatterMethod>,
+) -> Result<(), MutationError> {
+    let written =
+        set_step_scatter_method_impl(Path::new(&path), &revision, dirty, &step_id, method)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+/// Toggles `port` in `step_id`'s scatter list.
+fn set_step_scattered_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    port: &str,
+    scattered: bool,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    if scattered {
+        add_step_to_scatter_mut(&mut wf, step_id, port)?;
+    } else {
+        remove_step_from_scatter_mut(&mut wf, step_id, port)?;
+    }
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_step_scattered(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    port: String,
+    scattered: bool,
+) -> Result<(), MutationError> {
+    let written = set_step_scattered_impl(
+        Path::new(&path),
+        &revision,
+        dirty,
+        &step_id,
+        &port,
+        scattered,
+    )?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn set_step_pick_value_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    port: &str,
+    method: Option<PickValueMethod>,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    match method {
+        Some(method) => set_step_pick_value_mut(&mut wf, step_id, port, method)?,
+        None => clear_step_pick_value_mut(&mut wf, step_id, port)?,
+    }
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_step_pick_value(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    port: String,
+    method: Option<PickValueMethod>,
+) -> Result<(), MutationError> {
+    let written =
+        set_step_pick_value_impl(Path::new(&path), &revision, dirty, &step_id, &port, method)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn set_step_input_value_from_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    port: &str,
+    value_from: Option<String>,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    set_step_input_value_from_mut(&mut wf, step_id, port, value_from)?;
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_step_input_value_from(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    port: String,
+    value_from: Option<String>,
+) -> Result<(), MutationError> {
+    let written = set_step_input_value_from_impl(
+        Path::new(&path),
+        &revision,
+        dirty,
+        &step_id,
+        &port,
+        value_from,
+    )?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn add_step_input_slot_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    port: &str,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    add_step_input_slot_mut(&mut wf, step_id, port)?;
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn add_step_input_slot(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    port: String,
+) -> Result<(), MutationError> {
+    let written = add_step_input_slot_impl(Path::new(&path), &revision, dirty, &step_id, &port)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn set_step_input_link_merge_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    step_id: &str,
+    port: &str,
+    method: Option<LinkMergeMethod>,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    set_step_input_link_merge_mut(&mut wf, step_id, port, method)?;
+    ensure_multiple_input_feature_requirement_mut(&mut wf);
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_step_input_link_merge(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    step_id: String,
+    port: String,
+    method: Option<LinkMergeMethod>,
+) -> Result<(), MutationError> {
+    let written = set_step_input_link_merge_impl(
+        Path::new(&path),
+        &revision,
+        dirty,
+        &step_id,
+        &port,
+        method,
+    )?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn set_output_pick_value_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    output_id: &str,
+    method: Option<PickValueMethod>,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    set_output_pick_value_mut(&mut wf, output_id, method)?;
+    ensure_multiple_input_feature_requirement_mut(&mut wf);
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_output_pick_value(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    output_id: String,
+    method: Option<PickValueMethod>,
+) -> Result<(), MutationError> {
+    let written =
+        set_output_pick_value_impl(Path::new(&path), &revision, dirty, &output_id, method)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
+fn set_output_link_merge_impl(
+    path: &Path,
+    revision: &str,
+    dirty: bool,
+    output_id: &str,
+    method: Option<LinkMergeMethod>,
+) -> Result<String, MutationError> {
+    let (path, mut wf) = load_for_mutation(path, revision, dirty)?;
+    set_output_link_merge_mut(&mut wf, output_id, method)?;
+    ensure_multiple_input_feature_requirement_mut(&mut wf);
+    save_workflow(&wf, &path)
+}
+
+#[tauri::command]
+pub fn set_output_link_merge(
+    app: AppHandle,
+    path: String,
+    revision: String,
+    dirty: bool,
+    output_id: String,
+    method: Option<LinkMergeMethod>,
+) -> Result<(), MutationError> {
+    let written =
+        set_output_link_merge_impl(Path::new(&path), &revision, dirty, &output_id, method)?;
+    emit_workflow_changed(&app, path, &written);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use commonwl::requirements::MultipleInputFeatureRequirement;
     use std::{fs, path::PathBuf};
     use tempfile::tempdir;
 
@@ -1604,5 +1932,207 @@ steps:
             resolved, real_tool,
             "run: must resolve to the real tool file regardless of how the caller's paths were spelled"
         );
+    }
+
+    #[test]
+    fn rename_step_rewrites_downstream_source() {
+        let (_dir, path, revision) = setup();
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        let written =
+            rename_workflow_step_impl(&path, &revision, false, "producer", "renamed").unwrap();
+
+        assert_eq!(
+            consumer_y_source(&written),
+            Some(OneOrMany::One("renamed/out".to_string()))
+        );
+    }
+
+    #[test]
+    fn rename_step_refuses_duplicate_id() {
+        let (_dir, path, revision) = setup();
+        let result = rename_workflow_step_impl(&path, &revision, false, "producer", "consumer");
+        assert!(matches!(result, Err(MutationError::DuplicateId { id }) if id == "consumer"));
+    }
+
+    #[test]
+    fn set_when_writes_and_clears_expression() {
+        let (_dir, path, revision) = setup();
+        let written = set_step_when_impl(
+            &path,
+            &revision,
+            false,
+            "consumer",
+            Some("$(inputs.y != null)".to_string()),
+        )
+        .unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert_eq!(
+            wf.get_step("consumer").unwrap().when.as_deref(),
+            Some("$(inputs.y != null)")
+        );
+
+        let revision = compute_revision(written.as_bytes());
+        let written = set_step_when_impl(&path, &revision, false, "consumer", None).unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert_eq!(wf.get_step("consumer").unwrap().when, None);
+    }
+
+    #[test]
+    fn set_step_scattered_toggles_the_named_port() {
+        let (_dir, path, revision) = setup();
+        let written =
+            set_step_scattered_impl(&path, &revision, false, "producer", "x", true).unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert_eq!(
+            wf.get_step("producer").unwrap().scatter,
+            Some(OneOrMany::One("x".to_string()))
+        );
+
+        let revision = compute_revision(written.as_bytes());
+        let written =
+            set_step_scattered_impl(&path, &revision, false, "producer", "x", false).unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert_eq!(wf.get_step("producer").unwrap().scatter, None);
+    }
+
+    #[test]
+    fn add_step_input_slot_adds_a_bare_named_slot() {
+        let (_dir, path, revision) = setup();
+        let written =
+            add_step_input_slot_impl(&path, &revision, false, "producer", "gate").unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        assert!(
+            wf.get_step("producer")
+                .unwrap()
+                .r#in
+                .iter()
+                .any(|i| i.id.as_deref() == Some("gate"))
+        );
+    }
+
+    #[test]
+    fn add_step_input_slot_refuses_duplicate_name() {
+        let (_dir, path, revision) = setup();
+        add_step_input_slot_impl(&path, &revision, false, "producer", "gate").unwrap();
+        let revision = compute_revision(fs::read_to_string(&path).unwrap().as_bytes());
+        let result = add_step_input_slot_impl(&path, &revision, false, "producer", "gate");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn set_step_input_link_merge_writes_and_clears() {
+        let (_dir, path, revision) = setup();
+        let written = set_step_input_link_merge_impl(
+            &path,
+            &revision,
+            false,
+            "producer",
+            "x",
+            Some(LinkMergeMethod::MergeFlattened),
+        )
+        .unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let x = wf
+            .get_step("producer")
+            .unwrap()
+            .r#in
+            .into_iter()
+            .find(|i| i.id.as_deref() == Some("x"))
+            .unwrap();
+        assert_eq!(x.link_merge, Some(LinkMergeMethod::MergeFlattened));
+    }
+
+    #[test]
+    fn set_output_pick_value_and_link_merge_declare_multiple_input_requirement() {
+        let (_dir, path, revision) = setup();
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Output, "result", "result"),
+            false,
+            None,
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "consumer", "done"),
+            &endpoint(NodeKind::Output, "result", "result"),
+            false,
+            None,
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        let written = set_output_pick_value_impl(
+            &path,
+            &revision,
+            false,
+            "result",
+            Some(PickValueMethod::AllNonNull),
+        )
+        .unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let result = wf
+            .outputs
+            .iter()
+            .find(|o| o.id.as_deref() == Some("result"))
+            .unwrap();
+        assert_eq!(result.pick_value, Some(PickValueMethod::AllNonNull));
+        assert!(wf.has_requirement::<MultipleInputFeatureRequirement>());
+    }
+
+    #[test]
+    fn set_step_input_value_from_writes_and_clears() {
+        let (_dir, path, revision) = setup();
+        let written = set_step_input_value_from_impl(
+            &path,
+            &revision,
+            false,
+            "producer",
+            "x",
+            Some("$(self.toUpperCase())".to_string()),
+        )
+        .unwrap();
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let x = wf
+            .get_step("producer")
+            .unwrap()
+            .r#in
+            .into_iter()
+            .find(|i| i.id.as_deref() == Some("x"))
+            .unwrap();
+        assert_eq!(x.value_from.as_deref(), Some("$(self.toUpperCase())"));
     }
 }

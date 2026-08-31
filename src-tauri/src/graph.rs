@@ -77,6 +77,8 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                     data_type: input_type_label(&input.r#type),
                     link_merge: None,
                     pick_value: None,
+                    value_from: None,
+                    source_count: 0,
                 }],
                 run: None,
                 diagnostics: vec![],
@@ -150,6 +152,8 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                                 .and_then(|w| w.pick_value)
                                 .map(pick_value_label)
                                 .map(str::to_string),
+                            value_from: wsip.and_then(|w| w.value_from.clone()),
+                            source_count: source_count(wsip.and_then(|w| w.source.as_ref())),
                             id,
                         }
                     })
@@ -171,6 +175,8 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                         data_type: "Any".to_string(),
                         link_merge: wsip.link_merge.map(link_merge_label).map(str::to_string),
                         pick_value: wsip.pick_value.map(pick_value_label).map(str::to_string),
+                        value_from: wsip.value_from.clone(),
+                        source_count: source_count(wsip.source.as_ref()),
                     });
                 }
 
@@ -184,6 +190,8 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                             .unwrap_or_default(),
                         link_merge: None,
                         pick_value: None,
+                        value_from: None,
+                        source_count: 0,
                     })
                     .collect();
 
@@ -251,8 +259,10 @@ pub fn load_workflow_graph(workflow: &Workflow, path: impl AsRef<Path>) -> Workf
                 inputs: vec![FlowPort {
                     id: id.clone(),
                     data_type: output_type_label(&output.r#type),
-                    link_merge: None,
-                    pick_value: None,
+                    link_merge: output.link_merge.map(link_merge_label).map(str::to_string),
+                    pick_value: output.pick_value.map(pick_value_label).map(str::to_string),
+                    value_from: None,
+                    source_count: source_count(output.output_source.as_ref()),
                 }],
                 outputs: vec![],
                 run: None,
@@ -420,6 +430,10 @@ fn single_output_type_label(t: &CommandOutputType) -> String {
         },
         CommandOutputType::String(s) => s.clone(),
     }
+}
+
+fn source_count(source: Option<&OneOrMany<String>>) -> usize {
+    source.map_or(0, |s| s.len())
 }
 
 fn link_merge_label(m: LinkMergeMethod) -> &'static str {
@@ -702,6 +716,43 @@ steps:
         let port_b = step.data.inputs.iter().find(|p| p.id == "b").unwrap();
         assert_eq!(port_b.link_merge, None);
         assert_eq!(port_b.pick_value, None);
+        assert_eq!(port_a.source_count, 1);
+        assert_eq!(port_b.source_count, 1);
+    }
+
+    #[test]
+    fn test_source_count_and_output_link_merge_pick_value() {
+        let yaml = r"
+cwlVersion: v1.2
+class: Workflow
+inputs:
+- id: a
+  type: string
+- id: b
+  type: string
+outputs:
+- id: result
+  type: string
+  outputSource:
+  - a
+  - b
+  linkMerge: merge_flattened
+  pickValue: all_non_null
+steps: []
+";
+        let CWLDocument::Workflow(workflow) = commonwl::from_str(yaml).unwrap() else {
+            panic!("Expected a workflow document")
+        };
+        let view = load_workflow_graph(&workflow, "workflow.cwl");
+
+        let output = view.nodes.iter().find(|n| n.id == "output/result").unwrap();
+        let port = &output.data.inputs[0];
+        assert_eq!(port.source_count, 2);
+        assert_eq!(port.link_merge.as_deref(), Some("merge_flattened"));
+        assert_eq!(port.pick_value.as_deref(), Some("all_non_null"));
+
+        let input_a = view.nodes.iter().find(|n| n.id == "input/a").unwrap();
+        assert_eq!(input_a.data.outputs[0].source_count, 0);
     }
 
     // A step's `in:` can bind a name the underlying tool never declares --

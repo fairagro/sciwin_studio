@@ -9,14 +9,19 @@ export interface NodeRef {
 
 export type LinkMerge = "merge_nested" | "merge_flattened";
 export type PickValue = "first_non_null" | "the_only_non_null" | "all_non_null";
+export type ScatterMethod = "dotproduct" | "nested_crossproduct" | "flat_crossproduct";
 
 export interface FlowPort {
   id: string;
   dataType: string;
-  // Set only on a step's input ports -- null on workflow inputs/outputs and
-  // on step outputs, which have no WorkflowStepInput to carry these.
+  // Set only on a step's input ports and a workflow output's own port -- null
+  // on workflow inputs and step outputs, which have no source of their own.
   linkMerge: LinkMerge | null;
   pickValue: PickValue | null;
+  valueFrom: string | null;
+  // Number of sources feeding this port. linkMerge/pickValue only make sense
+  // once this is > 1 (0 on a port that can never have one).
+  sourceCount: number;
 }
 
 export type RunRef = { kind: "file"; path: string } | { kind: "inline" };
@@ -36,7 +41,7 @@ export interface FlowNodeData extends Record<string, unknown> {
   status: string | null;
   when: string | null;
   scatter: string[];
-  scatterMethod: "dotproduct" | "nested_crossproduct" | "flat_crossproduct" | null;
+  scatterMethod: ScatterMethod | null;
 }
 
 export interface FlowNode {

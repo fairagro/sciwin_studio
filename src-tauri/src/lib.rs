@@ -13,7 +13,10 @@ use graph::get_workflow_graph;
 use layout::{get_node_layout, reset_node_layout, save_node_layout};
 use lsp::lsp_send;
 use mutation::{
-    add_workflow_step_node, connect_workflow_nodes, delete_workflow_node, disconnect_workflow_nodes,
+    add_step_input_slot, add_workflow_step_node, connect_workflow_nodes, delete_workflow_node,
+    disconnect_workflow_nodes, rename_workflow_step, set_output_link_merge, set_output_pick_value,
+    set_step_input_link_merge, set_step_input_value_from, set_step_pick_value,
+    set_step_scatter_method, set_step_scattered, set_step_when,
 };
 use project::{has_workflow_config, init_sciwin_project};
 use session::{load_session, save_session};
@@ -51,6 +54,16 @@ pub fn run() {
             disconnect_workflow_nodes,
             delete_workflow_node,
             add_workflow_step_node,
+            rename_workflow_step,
+            set_step_when,
+            set_step_scatter_method,
+            set_step_scattered,
+            set_step_pick_value,
+            set_step_input_value_from,
+            set_step_input_link_merge,
+            set_output_pick_value,
+            set_output_link_merge,
+            add_step_input_slot,
             get_node_layout,
             save_node_layout,
             reset_node_layout

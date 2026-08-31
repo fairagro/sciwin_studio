@@ -42,6 +42,9 @@ class WorkspaceState {
   selectedNodeData = $state<FlowNodeData | null>(null);
   inspectorOpen = $state(false);
   inspectorWidth = $state(280);
+  // The open graph's revision, for the Inspector's own mutation calls --
+  // kept in sync by GraphView, same as selectedNodeData.
+  graphRevision = $state<string | null>(null);
 
   activeTab = $derived(this.tabs.find((t) => t.path === this.activePath) ?? null);
 

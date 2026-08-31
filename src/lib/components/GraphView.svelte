@@ -92,6 +92,12 @@
     }
   });
 
+  // Mirrored into workspace so Inspector's own mutation calls can read it
+  // without GraphView passing it down as a prop.
+  $effect(() => {
+    workspace.graphRevision = revision;
+  });
+
   // Loaded alongside the graph and kept in sync on every drag, so a save
   // only ever has to write the full current map, never merge against disk.
   let layoutPositions: Record<string, LayoutPosition> = {};

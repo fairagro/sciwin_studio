@@ -84,6 +84,10 @@ body {
     font-family: var(--font-sans);
     background: var(--bg);
     color: var(--text);
+    /* App is dark-only -- without this, native form controls (select
+       dropdowns, the selected option's own text) auto-theme against a
+       light-mode guess and clash with the rest of the UI. */
+    color-scheme: dark;
 }
 
 ::-webkit-scrollbar {

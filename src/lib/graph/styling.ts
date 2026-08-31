@@ -29,7 +29,7 @@ function isOptional(dataType: string): boolean {
   return parts(dataType).includes("null");
 }
 
-function isArrayLike(dataType: string): boolean {
+export function isArrayLike(dataType: string): boolean {
   return nonNullPart(dataType).endsWith("[]");
 }
 

@@ -102,6 +102,12 @@ pub struct FlowPort {
     pub link_merge: Option<String>,
     /// "first_non_null" | "the_only_non_null" | "all_non_null".
     pub pick_value: Option<String>,
+    /// Set only on a step's input ports.
+    pub value_from: Option<String>,
+    /// Number of `source`/`outputSource` entries feeding this port -- 0 on a
+    /// port that can't have one (workflow input, step output). linkMerge and
+    /// pickValue only make sense once this is more than 1.
+    pub source_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
