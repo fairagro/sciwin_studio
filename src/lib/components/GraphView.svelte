@@ -63,6 +63,25 @@
 
   function handlePaneClick() {
     edge_menu = null;
+    workspace.closeInspector();
+  }
+
+  function handleNodeClick({ node }: { node: Node }) {
+    workspace.selectNode(node.id, node.data as FlowNodeData);
+  }
+
+  // Keeps an open Inspector in sync with the node data after every reload.
+  // a mutation's own workflow-changed event, a Monaco save, or another
+  // window writing the file. Closes the panel if the selected node is gone,
+  // e.g. the node itself was just deleted.
+  function refreshSelectedNode() {
+    if (!workspace.selectedNodeId) return;
+    const current = nodes.find((n) => n.id === workspace.selectedNodeId);
+    if (current) {
+      workspace.selectedNodeData = current.data as FlowNodeData;
+    } else {
+      workspace.closeInspector();
+    }
   }
 
   let mutationErrorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -85,6 +104,7 @@
       ({ nodes, edges } = toSvelteFlow(view, layoutPositions));
       revision = view.revision;
       loadError = null;
+      refreshSelectedNode();
     } catch (error) {
       console.error("Failed to load workflow graph:", error);
       nodes = [];
@@ -136,6 +156,7 @@
       edges = [];
       revision = null;
       loadError = null;
+      workspace.closeInspector();
       return;
     }
     loadGraph(tab.path);
@@ -449,6 +470,7 @@
     onconnect={handleConnect}
     onconnectend={handleConnectEnd}
     onnodedragstop={handleNodeDragStop}
+    onnodeclick={handleNodeClick}
     onpaneclick={handlePaneClick}
     onpointerdown={handlePaneClick}
     onedgecontextmenu={handleEdgeContextMenu}

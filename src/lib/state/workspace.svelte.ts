@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { FlowNodeData } from "$lib/graph/types";
 
 export type TabViewMode = "graph" | "code";
 export type CWLDocType = "Workflow" | "CommandLineTool" | "ExpressionTool" | "Operation";
@@ -37,6 +38,11 @@ class WorkspaceState {
   terminalOpen = $state(false);
   terminalHeight = $state(176);
 
+  selectedNodeId = $state<string | null>(null);
+  selectedNodeData = $state<FlowNodeData | null>(null);
+  inspectorOpen = $state(false);
+  inspectorWidth = $state(280);
+
   activeTab = $derived(this.tabs.find((t) => t.path === this.activePath) ?? null);
 
   selectSidebarView(view: SidebarView) {
@@ -58,6 +64,22 @@ class WorkspaceState {
 
   resizeTerminal(deltaPx: number) {
     this.terminalHeight = Math.min(560, Math.max(120, this.terminalHeight + deltaPx));
+  }
+
+  selectNode(id: string, data: FlowNodeData) {
+    this.selectedNodeId = id;
+    this.selectedNodeData = data;
+    this.inspectorOpen = true;
+  }
+
+  closeInspector() {
+    this.inspectorOpen = false;
+    this.selectedNodeId = null;
+    this.selectedNodeData = null;
+  }
+
+  resizeInspector(deltaPx: number) {
+    this.inspectorWidth = Math.min(420, Math.max(220, this.inspectorWidth - deltaPx));
   }
 
   openProject(path: string, hasConfig: boolean) {

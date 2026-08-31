@@ -7,6 +7,7 @@
   import GraphView from "$lib/components/GraphView.svelte";
   import ViewModeToggle from "$lib/components/ViewModeToggle.svelte";
   import Terminal from "$lib/components/Terminal.svelte";
+  import Inspector from "$lib/components/Inspector.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ResizeHandles from "$lib/components/ResizeHandles.svelte";
   import ResizeHandle from "$lib/components/ResizeHandle.svelte";
@@ -60,6 +61,10 @@
       {/if}
       <Terminal />
     </div>
+    {#if workspace.inspectorOpen}
+      <ResizeHandle orientation="vertical" onResize={(d) => workspace.resizeInspector(d)} />
+      <Inspector />
+    {/if}
   </div>
   <StatusBar />
 </div>
