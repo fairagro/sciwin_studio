@@ -26,9 +26,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # fairagro
-sciwin = "2.0.0-beta.1"
-commonwl = "0.13.1"
-cwl-lsp = "0.13.1"
+sciwin = "2.0.0-beta.2"
+commonwl = "0.14"
+cwl-lsp = "0.14"
 
 # tauri
 tauri = { version = "2", features = [] }
