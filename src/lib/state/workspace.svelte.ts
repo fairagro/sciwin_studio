@@ -37,6 +37,9 @@ class WorkspaceState {
   sidebarWidth = $state(248);
   terminalOpen = $state(false);
   terminalHeight = $state(176);
+  // Bumped after a filesystem change the Sidebar didn't cause itself (e.g. a
+  // delete from the context menu), so its cached tree gets invalidated.
+  fsVersion = $state(0);
 
   selectedNodeId = $state<string | null>(null);
   selectedNodeData = $state<FlowNodeData | null>(null);
@@ -123,6 +126,19 @@ class WorkspaceState {
     if (this.activePath === path) {
       this.activePath = (this.tabs[index] ?? this.tabs[index - 1])?.path ?? null;
     }
+  }
+
+  // Closes `path` itself plus any open tab nested under it -- e.g. deleting a
+  // folder should also close tabs for files that used to live inside it.
+  closeTabsUnder(path: string) {
+    const isNested = (p: string) => p === path || p.startsWith(`${path}/`) || p.startsWith(`${path}\\`);
+    for (const tab of [...this.tabs]) {
+      if (isNested(tab.path)) this.closeTab(tab.path);
+    }
+  }
+
+  notifyFilesystemChanged() {
+    this.fsVersion++;
   }
 }
 

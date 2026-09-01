@@ -17,7 +17,7 @@
   </p>
   <ContextMenu.Item
     onSelect={deleteNode}
-    class="w-full rounded px-2 py-1.5 text-left font-mono text-xs text-text-2 outline-none hover:bg-border-soft hover:text-fairagro-red-light data-highlighted:bg-border-soft data-highlighted:text-fairagro-red-light"
+    class="w-full rounded px-2 py-1.5 text-left font-mono text-xs text-text-2 cursor-pointer select-none outline-none hover:bg-border-soft hover:text-fairagro-red-light data-highlighted:bg-border-soft data-highlighted:text-fairagro-red-light"
   >
     Delete Node
   </ContextMenu.Item>

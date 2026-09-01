@@ -3,13 +3,25 @@
 
   interface Props {
     open: boolean;
+    title?: string;
+    description?: string;
+    placeholder?: string;
     busy?: boolean;
     error?: string | null;
     onCreate: (name: string) => void;
     onCancel: () => void;
   }
 
-  let { open = $bindable(false), busy = false, error = null, onCreate, onCancel }: Props = $props();
+  let {
+    open = $bindable(false),
+    title = "New Workflow",
+    description = "Creates an empty workflow file in the project's workflows folder.",
+    placeholder = "workflow name",
+    busy = false,
+    error = null,
+    onCreate,
+    onCancel,
+  }: Props = $props();
 
   let name = $state("");
   let inputEl: HTMLInputElement | undefined = $state();
@@ -39,15 +51,15 @@
       class="fixed top-1/2 left-1/2 z-50 w-95 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-bg-surface text-text shadow-2xl"
     >
       <div class="flex items-center border-b border-border-soft px-4 py-3.5">
-        <AlertDialog.Title class="font-display flex-1 text-[15px] font-semibold text-text">New Workflow</AlertDialog.Title>
+        <AlertDialog.Title class="font-display flex-1 text-[15px] font-semibold text-text">{title}</AlertDialog.Title>
       </div>
       <div class="px-4 py-4">
-        <AlertDialog.Description class="text-[13px] leading-relaxed text-text-2">Creates an empty workflow file in the project's workflows folder.</AlertDialog.Description>
+        <AlertDialog.Description class="text-[13px] leading-relaxed text-text-2">{description}</AlertDialog.Description>
         <input
           bind:this={inputEl}
           bind:value={name}
           type="text"
-          placeholder="workflow name"
+          {placeholder}
           class="mt-3.5 w-full rounded-md border border-border-soft bg-bg px-2.5 py-1.5 font-mono text-[13px] text-text outline-none focus:border-fairagro-mid-500"
           onkeydown={(e) => e.key === "Enter" && submit()}
           disabled={busy}

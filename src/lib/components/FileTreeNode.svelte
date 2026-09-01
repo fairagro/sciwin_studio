@@ -1,9 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { ContextMenu } from "bits-ui";
   import { ChevronRight, File, Folder, FolderOpen } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import FileTreeNode from "./FileTreeNode.svelte";
+  import FileTreeNodeContextMenu from "./context-menu/FileTreeNode.svelte";
 
   export interface FsEntry {
     name: string;
@@ -51,30 +53,39 @@
 </script>
 
 <div>
-  <button
-    type="button"
-    class="flex w-full items-center gap-1.5 rounded py-0.75 pr-1 text-left font-mono text-[11.5px] whitespace-nowrap text-text-2 hover:bg-border-soft hover:text-text {!entry.isDir &&
-    entry.path === workspace.activePath
-      ? 'bg-fairagro-mid-500/14 text-text'
-      : ''}"
-    style="padding-left: {depth * 14 + 4}px"
-    draggable={isDraggableTool}
-    ondragstart={onDragStart}
-    onclick={toggle}
-  >
-    {#if entry.isDir}
-      <ChevronRight size={11} class="shrink-0 transition-transform {expanded ? 'rotate-90' : ''}" />
-      {#if expanded}
-        <FolderOpen size={13} strokeWidth={1.8} class="shrink-0 text-fairagro-mid-500" />
-      {:else}
-        <Folder size={13} strokeWidth={1.8} class="shrink-0 text-fairagro-mid-500" />
-      {/if}
-    {:else}
-      <span class="w-2.75 shrink-0"></span>
-      <File size={13} strokeWidth={1.8} class="shrink-0 text-text-3" />
-    {/if}
-    <span class="truncate">{entry.name}</span>
-  </button>
+  <ContextMenu.Root>
+    <ContextMenu.Trigger>
+      {#snippet child({ props })}
+        <button
+          {...props}
+          type="button"
+          class="flex w-full items-center gap-1.5 rounded py-0.75 pr-1 text-left font-mono text-[11.5px] whitespace-nowrap text-text-2 hover:bg-border-soft hover:text-text {!entry.isDir && entry.path === workspace.activePath
+            ? 'bg-fairagro-mid-500/14 text-text'
+            : ''}"
+          style="padding-left: {depth * 14 + 4}px"
+          draggable={isDraggableTool}
+          ondragstart={onDragStart}
+          onclick={toggle}
+        >
+          {#if entry.isDir}
+            <ChevronRight size={11} class="shrink-0 transition-transform {expanded ? 'rotate-90' : ''}" />
+            {#if expanded}
+              <FolderOpen size={13} strokeWidth={1.8} class="shrink-0 text-fairagro-mid-500" />
+            {:else}
+              <Folder size={13} strokeWidth={1.8} class="shrink-0 text-fairagro-mid-500" />
+            {/if}
+          {:else}
+            <span class="w-2.75 shrink-0"></span>
+            <File size={13} strokeWidth={1.8} class="shrink-0 text-text-3" />
+          {/if}
+          <span class="truncate">{entry.name}</span>
+        </button>
+      {/snippet}
+    </ContextMenu.Trigger>
+    <ContextMenu.Portal>
+      <FileTreeNodeContextMenu id={entry.path} is_dir={entry.isDir} />
+    </ContextMenu.Portal>
+  </ContextMenu.Root>
 
   {#if entry.isDir && expanded}
     {#if loading}

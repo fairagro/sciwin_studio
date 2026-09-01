@@ -107,6 +107,18 @@ pub fn read_file(path: String) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "binary".to_string())
 }
 
+/// Removes a file or directory (recursively). Checked via `symlink_metadata`
+/// rather than `metadata`
+#[tauri::command]
+pub fn delete_file(path: String) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if metadata.is_dir() {
+        std::fs::remove_dir_all(&path).map_err(|e| e.to_string())
+    } else {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())
+    }
+}
+
 /// Saving a `.cwl` file from Monaco changes what the graph view should show
 /// for that path; `workflow-changed` tells any open graph view to re-fetch
 /// instead of going stale until the tab is switched away and back.
@@ -140,6 +152,25 @@ pub fn create_workflow(dir: String, name: String) -> Result<String, String> {
     }
 
     let (path, _yaml) = sciwin::authoring::workflow::create_workflow(name, Some(base_dir), false)
+        .map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Creates a blank CLT document named `name` in `dir`
+#[tauri::command]
+pub fn create_command_line_tool(dir: String, name: String) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Toolname name must not be empty".to_string());
+    }
+
+    let base_dir = PathBuf::from(dir);
+    let target = sciwin::authoring::paths::get_qualified_filename_by_name(name, &base_dir);
+    if target.exists() {
+        return Err(format!("{} already exists", target.display()));
+    }
+
+    let (path, _yaml) = sciwin::authoring::tool::create_blank_command_line_tool(name, Some(base_dir), false)
         .map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
 }

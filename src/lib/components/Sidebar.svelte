@@ -62,6 +62,7 @@
   let loadingWorkflows = $state(false);
   let loadingFilesystem = $state(false);
   let lastPath: string | null = null;
+  let lastFsVersion = 0;
 
   function reloadCurrentView() {
     if (workspace.sidebarView === "workflows") workflowEntries = null;
@@ -102,9 +103,11 @@
   $effect(() => {
     const path = workspace.projectPath;
     const view = workspace.sidebarView;
+    const fsVersion = workspace.fsVersion;
 
-    if (path !== lastPath) {
+    if (path !== lastPath || fsVersion !== lastFsVersion) {
       lastPath = path;
+      lastFsVersion = fsVersion;
       workflowEntries = null;
       filesystemEntries = null;
     }
@@ -130,6 +133,7 @@
 <aside
   class="flex shrink-0 flex-col border-r border-border bg-bg-panel select-none"
   style="width: {workspace.sidebarWidth}px"
+  oncontextmenu={(e) => e.preventDefault()}
 >
   <div class="flex items-center gap-2 border-b border-border-soft px-3 py-2.5">
     <FolderOpen size={14} strokeWidth={1.6} class="shrink-0 text-text-2" />

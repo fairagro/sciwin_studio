@@ -1,14 +1,17 @@
 mod files;
+mod graph;
+mod graph_types;
 mod layout;
 mod lsp;
 mod mutation;
 mod project;
 mod session;
 mod terminal;
-mod graph;
-mod graph_types;
 
-use files::{create_workflow, cwl_doc_type, get_cwl_files, list_dir, path_exists, read_file, write_file};
+use files::{
+    create_command_line_tool, create_workflow, cwl_doc_type, delete_file, get_cwl_files, list_dir,
+    path_exists, read_file, write_file,
+};
 use graph::get_workflow_graph;
 use layout::{get_node_layout, reset_node_layout, save_node_layout};
 use lsp::lsp_send;
@@ -41,8 +44,10 @@ pub fn run() {
             list_dir,
             get_cwl_files,
             create_workflow,
+            create_command_line_tool,
             read_file,
             write_file,
+            delete_file,
             path_exists,
             has_workflow_config,
             init_sciwin_project,
