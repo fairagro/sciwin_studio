@@ -13,6 +13,7 @@
   import { ContextMenu } from "bits-ui";
   import WorkflowNode from "./WorkflowNode.svelte";
   import EdgeContextMenu from "./context-menu/Edge.svelte";
+  import NodeContextMenu from "./context-menu/Node.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import PickValueDialog from "./PickValueDialog.svelte";
 
@@ -29,20 +30,28 @@
   const isEditorDirty = $derived(workspace.activeTab?.viewMode === "graph" && workspace.activeTab?.dirty === true);
 
   let contextMenuEdgeId: string | null = $state(null);
+  let contextMenuNodeId: string | null = $state(null);
 
-  // The trigger wraps the whole canvas (SvelteFlow renders edges directly
-  // into its own DOM, so there's no per-edge element to attach a trigger
-  // to). Right-clicks that don't land on an edge are prevented here, before
-  // bits-ui's own contextmenu listener on the trigger sees them, so the menu
-  // only ever opens for edges.
-  function blockNonEdgeContextMenu(event: MouseEvent) {
-    if (!(event.target as HTMLElement | null)?.closest(".svelte-flow__edge")) {
+  // The trigger wraps the whole canvas (SvelteFlow renders nodes/edges
+  // directly into its own DOM, so there's no per-node/per-edge element to
+  // attach a trigger to). Right-clicks that don't land on a node or edge are
+  // prevented here, before bits-ui's own contextmenu listener on the trigger
+  // sees them, so the menu only ever opens for those.
+  function blockUnhandledContextMenu(event: MouseEvent) {
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest(".svelte-flow__node, .svelte-flow__edge")) {
       event.preventDefault();
     }
   }
 
   const handleEdgeContextMenu = ({ edge }: { edge: Edge }) => {
     contextMenuEdgeId = edge.id;
+    contextMenuNodeId = null;
+  };
+
+  const handleNodeContextMenu = ({ node }: { node: Node }) => {
+    contextMenuNodeId = node.id;
+    contextMenuEdgeId = null;
   };
 
   function handlePaneClick() {
@@ -244,11 +253,7 @@
   let pickValueDialogOpen = $state(false);
   let resolvePickValueConfirm: ((value: PickValue | null) => void) | null = null;
 
-  async function performConnect(
-    from: ConnectionEndpoint,
-    to: ConnectionEndpoint,
-    opts: { scatterConfirmed?: boolean; pickValue?: PickValue | null } = {}
-  ): Promise<boolean> {
+  async function performConnect(from: ConnectionEndpoint, to: ConnectionEndpoint, opts: { scatterConfirmed?: boolean; pickValue?: PickValue | null } = {}): Promise<boolean> {
     const tab = workspace.activeTab;
     if (!tab || revision === null) return false;
 
@@ -451,13 +456,16 @@
 
 <ContextMenu.Root
   onOpenChange={(open) => {
-    if (!open) contextMenuEdgeId = null;
+    if (!open) {
+      contextMenuEdgeId = null;
+      contextMenuNodeId = null;
+    }
   }}
 >
   <ContextMenu.Trigger>
     {#snippet child({ props })}
       <!-- svelte-ignore a11y_no_static_element_interactions -- drop zone for dragging a tool from the Sidebar onto the graph; the canvas itself is SvelteFlow's, this div only relays drops -->
-      <div {...props} class="relative h-full w-full" ondragover={handleDragOver} ondrop={handleDrop} oncontextmenucapture={blockNonEdgeContextMenu}>
+      <div {...props} class="relative h-full w-full" ondragover={handleDragOver} ondrop={handleDrop} oncontextmenucapture={blockUnhandledContextMenu}>
         <SvelteFlow
           bind:nodes
           bind:edges
@@ -470,6 +478,7 @@
           onpaneclick={handlePaneClick}
           onpointerdown={handlePaneClick}
           onedgecontextmenu={handleEdgeContextMenu}
+          onnodecontextmenu={handleNodeContextMenu}
           onbeforedelete={handleBeforeDelete}
           nodesConnectable={!isEditorDirty}
           deleteKey={["Backspace", "Delete"]}
@@ -486,6 +495,9 @@
           <ContextMenu.Portal>
             {#if contextMenuEdgeId}
               <EdgeContextMenu id={contextMenuEdgeId} />
+            {/if}
+            {#if contextMenuNodeId}
+              <NodeContextMenu id={contextMenuNodeId} />
             {/if}
           </ContextMenu.Portal>
         </SvelteFlow>
@@ -525,9 +537,4 @@
   onCancel={cancelScatter}
 />
 
-<PickValueDialog
-  bind:open={pickValueDialogOpen}
-  port={pickValueConfirm?.port ?? ""}
-  onChoose={choosePickValue}
-  onCancel={cancelPickValue}
-/>
+<PickValueDialog bind:open={pickValueDialogOpen} port={pickValueConfirm?.port ?? ""} onChoose={choosePickValue} onCancel={cancelPickValue} />
