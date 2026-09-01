@@ -2,10 +2,12 @@
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/editor/editor.worker?worker";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import { notifyDidChange, notifyDidClose, notifyDidOpen, setDiagnosticsHandler } from "$lib/lsp/connection";
   import { registerLspProviders } from "$lib/lsp/providers";
+  import type { WorkflowChanged } from "$lib/graph/types";
 
   function isCwl(name: string): boolean {
     return name.toLowerCase().endsWith(".cwl");
@@ -60,6 +62,10 @@
   }
 
   const changeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Paths whose model is being overwritten to match disk (a graph mutation
+  // or another window's save), so the next onDidChangeContent for that path
+  // shouldn't mark the tab dirty or be mistaken for a user edit.
+  const syncingPaths = new Set<string>();
 
   async function modelFor(path: string, name: string) {
     let model = models.get(path);
@@ -82,7 +88,7 @@
 
     model.onDidChangeContent(() => {
       const tab = workspace.tabs.find((t) => t.path === path);
-      if (tab) tab.dirty = true;
+      if (!syncingPaths.delete(path) && tab) tab.dirty = true;
 
       if (!cwl) return;
       clearTimeout(changeTimers.get(path));
@@ -147,6 +153,27 @@
   onDestroy(() => {
     editor?.dispose();
     for (const model of models.values()) model.dispose();
+  });
+
+  // Keeps an already-open code tab in sync with a graph mutation's write to
+  // the same file (or another window's save). Skipped while the tab is
+  // dirty, so it never clobbers unsaved edits.
+  onMount(() => {
+    const unlisten = listen<WorkflowChanged>("workflow-changed", async (event) => {
+      const { path } = event.payload;
+      const model = models.get(path);
+      const tab = workspace.tabs.find((t) => t.path === path);
+      if (!model || tab?.dirty) return;
+
+      const content = await invoke<string>("read_file", { path }).catch(() => null);
+      if (content === null || content === model.getValue()) return;
+
+      syncingPaths.add(path);
+      model.setValue(content);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   });
 
   $effect(() => {
