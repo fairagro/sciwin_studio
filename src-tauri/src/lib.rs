@@ -8,7 +8,7 @@ mod terminal;
 mod graph;
 mod graph_types;
 
-use files::{cwl_doc_type, get_cwl_files, list_dir, path_exists, read_file, write_file};
+use files::{create_workflow, cwl_doc_type, get_cwl_files, list_dir, path_exists, read_file, write_file};
 use graph::get_workflow_graph;
 use layout::{get_node_layout, reset_node_layout, save_node_layout};
 use lsp::lsp_send;
@@ -40,6 +40,7 @@ pub fn run() {
             check_s4n,
             list_dir,
             get_cwl_files,
+            create_workflow,
             read_file,
             write_file,
             path_exists,

@@ -125,6 +125,25 @@ pub fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
+/// Creates a blank Workflow document named `name` in `dir`
+#[tauri::command]
+pub fn create_workflow(dir: String, name: String) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Workflow name must not be empty".to_string());
+    }
+
+    let base_dir = PathBuf::from(dir);
+    let target = sciwin::authoring::paths::get_qualified_filename_by_name(name, &base_dir);
+    if target.exists() {
+        return Err(format!("{} already exists", target.display()));
+    }
+
+    let (path, _yaml) = sciwin::authoring::workflow::create_workflow(name, Some(base_dir), false)
+        .map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 #[derive(Serialize, Deserialize)]
 pub enum CWLDocType {
     Workflow,

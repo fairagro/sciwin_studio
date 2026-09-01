@@ -1,10 +1,11 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
-  import { FolderOpen, RotateCw, X } from "@lucide/svelte";
+  import { FilePlus, FolderOpen, RotateCw, X } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import FileTreeNode, { type FsEntry } from "./FileTreeNode.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import NewWorkflowDialog from "./NewWorkflowDialog.svelte";
 
   let showInitPrompt = $state(false);
   let pendingProjectPath = $state<string | null>(null);
@@ -67,6 +68,37 @@
     if (workspace.sidebarView === "filesystem") filesystemEntries = null;
   }
 
+  let showNewWorkflow = $state(false);
+  let newWorkflowBusy = $state(false);
+  let newWorkflowError = $state<string | null>(null);
+
+  function openNewWorkflow() {
+    newWorkflowError = null;
+    showNewWorkflow = true;
+  }
+
+  async function createWorkflow(name: string) {
+    const dir = workspace.projectPath;
+    if (!dir) return;
+    newWorkflowBusy = true;
+    try {
+      const path = await invoke<string>("create_workflow", { dir, name });
+      newWorkflowBusy = false;
+      showNewWorkflow = false;
+      workflowEntries = null;
+      const fileName = path.split(/[\\/]/).pop() ?? path;
+      await workspace.openTab(path, fileName);
+    } catch (err) {
+      newWorkflowBusy = false;
+      newWorkflowError = String(err);
+    }
+  }
+
+  function cancelNewWorkflow() {
+    showNewWorkflow = false;
+    newWorkflowError = null;
+  }
+
   $effect(() => {
     const path = workspace.projectPath;
     const view = workspace.sidebarView;
@@ -119,6 +151,16 @@
   {#if workspace.projectPath && workspace.sidebarView !== "sourcecontrol"}
     <div class="flex items-center gap-1 px-3 pt-2.5 pb-1">
       <span class="flex-1 font-mono text-[10px] tracking-widest text-text-3 uppercase">{sectionLabels[workspace.sidebarView]}</span>
+      {#if workspace.sidebarView === "workflows"}
+        <button
+          type="button"
+          class="shrink-0 rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
+          title="New Workflow"
+          onclick={openNewWorkflow}
+        >
+          <FilePlus size={12} strokeWidth={1.8} />
+        </button>
+      {/if}
       <button
         type="button"
         class="shrink-0 rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
@@ -181,3 +223,5 @@
   onConfirm={confirmInit}
   onCancel={declineInit}
 />
+
+<NewWorkflowDialog bind:open={showNewWorkflow} busy={newWorkflowBusy} error={newWorkflowError} onCreate={createWorkflow} onCancel={cancelNewWorkflow} />
