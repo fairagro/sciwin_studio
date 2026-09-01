@@ -10,8 +10,9 @@
   import { addWorkflowStepNode, connectWorkflowNodes, deleteWorkflowNode, disconnectWorkflowNodes } from "$lib/graph/mutation";
   import { getNodeLayout, saveNodeLayout, resetNodeLayout } from "$lib/graph/layout";
   import { mutationErrorMessage, type ConnectionEndpoint, type FlowNodeData, type LayoutPosition, type MutationError, type PickValue, type WorkflowChanged, type WorkflowView } from "$lib/graph/types";
+  import { ContextMenu } from "bits-ui";
   import WorkflowNode from "./WorkflowNode.svelte";
-  import ContextMenu from "./context-menu/Edge.svelte";
+  import EdgeContextMenu from "./context-menu/Edge.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import PickValueDialog from "./PickValueDialog.svelte";
 
@@ -27,42 +28,24 @@
 
   const isEditorDirty = $derived(workspace.activeTab?.viewMode === "graph" && workspace.activeTab?.dirty === true);
 
-  let edge_menu: {
-    id: string;
-    top?: number;
-    left?: number;
-    right?: number;
-    bottom?: number;
-  } | null = $state(null);
-  let clientWidth: number = $state(0);
-  let clientHeight: number = $state(0);
-  let containerEl: HTMLDivElement | undefined = $state();
+  let contextMenuEdgeId: string | null = $state(null);
 
-  const handleEdgeContextMenu = ({ edge, event }: { edge: Edge; event: MouseEvent }) => {
-    // Prevent native context menu from showing
-    event.preventDefault();
+  // The trigger wraps the whole canvas (SvelteFlow renders edges directly
+  // into its own DOM, so there's no per-edge element to attach a trigger
+  // to). Right-clicks that don't land on an edge are prevented here, before
+  // bits-ui's own contextmenu listener on the trigger sees them, so the menu
+  // only ever opens for edges.
+  function blockNonEdgeContextMenu(event: MouseEvent) {
+    if (!(event.target as HTMLElement | null)?.closest(".svelte-flow__edge")) {
+      event.preventDefault();
+    }
+  }
 
-    // event.clientX/Y are viewport-relative, but the menu is positioned
-    // relative to this container (offset by the sidebar/titlebar) -- convert
-    // before comparing against clientWidth/clientHeight, or the menu lands
-    // wherever the container happens to be offset from the window origin.
-    const rect = containerEl?.getBoundingClientRect();
-    const x = event.clientX - (rect?.left ?? 0);
-    const y = event.clientY - (rect?.top ?? 0);
-
-    // Calculate position of the context menu. We want to make sure it
-    // doesn't get positioned off-screen.
-    edge_menu = {
-      id: edge.id,
-      top: y < clientHeight - 200 ? y : undefined,
-      left: x < clientWidth - 200 ? x : undefined,
-      right: x >= clientWidth - 200 ? clientWidth - x : undefined,
-      bottom: y >= clientHeight - 200 ? clientHeight - y : undefined,
-    };
+  const handleEdgeContextMenu = ({ edge }: { edge: Edge }) => {
+    contextMenuEdgeId = edge.id;
   };
 
   function handlePaneClick() {
-    edge_menu = null;
     workspace.closeInspector();
   }
 
@@ -466,49 +449,61 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -- drop zone for dragging a tool from the Sidebar onto the graph; the canvas itself is SvelteFlow's, this div only relays drops -->
-<div class="relative h-full w-full" bind:this={containerEl} bind:clientWidth bind:clientHeight ondragover={handleDragOver} ondrop={handleDrop}>
-  <SvelteFlow
-    bind:nodes
-    bind:edges
-    {nodeTypes}
-    {isValidConnection}
-    onconnect={handleConnect}
-    onconnectend={handleConnectEnd}
-    onnodedragstop={handleNodeDragStop}
-    onnodeclick={handleNodeClick}
-    onpaneclick={handlePaneClick}
-    onpointerdown={handlePaneClick}
-    onedgecontextmenu={handleEdgeContextMenu}
-    onbeforedelete={handleBeforeDelete}
-    nodesConnectable={!isEditorDirty}
-    deleteKey={["Backspace", "Delete"]}
-    fitView
-    colorMode="dark"
-  >
-    <Background bgColor="var(--color-bg)" patternColor="var(--color-border-soft)" gap={22} size={1} />
-    {#if edge_menu}
-      <ContextMenu onclick={handlePaneClick} id={edge_menu.id} top={edge_menu.top} left={edge_menu.left} right={edge_menu.right} bottom={edge_menu.bottom} />
-    {/if}
-    <Controls>
-      <ControlButton onclick={handleResetLayout} title="Reset to auto layout">
-        <Broom size={14} strokeWidth={1.8} />
-      </ControlButton>
-    </Controls>
-    <MiniMap bgColor="var(--color-bg-panel)" maskColor="rgba(18, 19, 22, 0.65)" />
-  </SvelteFlow>
-  {#if loadError}
-    <div class="absolute top-2 left-2 rounded border border-fairagro-red bg-bg-panel px-3 py-1.5 font-mono text-xs text-fairagro-red-light">
-      Failed to load graph: {loadError}
-    </div>
-  {:else if mutationError}
-    <div class="absolute top-2 left-2 rounded border border-fairagro-red bg-bg-panel px-3 py-1.5 font-mono text-xs text-fairagro-red-light">
-      {mutationErrorMessage(mutationError)}
-    </div>
-  {:else if isEditorDirty}
-    <div class="absolute top-2 left-2 rounded border border-border bg-bg-panel px-3 py-1.5 font-mono text-xs text-text-2">Editor has unsaved changes &middot; showing the last saved version</div>
-  {/if}
-</div>
+<ContextMenu.Root
+  onOpenChange={(open) => {
+    if (!open) contextMenuEdgeId = null;
+  }}
+>
+  <ContextMenu.Trigger>
+    {#snippet child({ props })}
+      <!-- svelte-ignore a11y_no_static_element_interactions -- drop zone for dragging a tool from the Sidebar onto the graph; the canvas itself is SvelteFlow's, this div only relays drops -->
+      <div {...props} class="relative h-full w-full" ondragover={handleDragOver} ondrop={handleDrop} oncontextmenucapture={blockNonEdgeContextMenu}>
+        <SvelteFlow
+          bind:nodes
+          bind:edges
+          {nodeTypes}
+          {isValidConnection}
+          onconnect={handleConnect}
+          onconnectend={handleConnectEnd}
+          onnodedragstop={handleNodeDragStop}
+          onnodeclick={handleNodeClick}
+          onpaneclick={handlePaneClick}
+          onpointerdown={handlePaneClick}
+          onedgecontextmenu={handleEdgeContextMenu}
+          onbeforedelete={handleBeforeDelete}
+          nodesConnectable={!isEditorDirty}
+          deleteKey={["Backspace", "Delete"]}
+          fitView
+          colorMode="dark"
+        >
+          <Background bgColor="var(--color-bg)" patternColor="var(--color-border-soft)" gap={22} size={1} />
+          <Controls>
+            <ControlButton onclick={handleResetLayout} title="Reset to auto layout">
+              <Broom size={14} strokeWidth={1.8} />
+            </ControlButton>
+          </Controls>
+          <MiniMap bgColor="var(--color-bg-panel)" maskColor="rgba(18, 19, 22, 0.65)" />
+          <ContextMenu.Portal>
+            {#if contextMenuEdgeId}
+              <EdgeContextMenu id={contextMenuEdgeId} />
+            {/if}
+          </ContextMenu.Portal>
+        </SvelteFlow>
+        {#if loadError}
+          <div class="absolute top-2 left-2 rounded border border-fairagro-red bg-bg-panel px-3 py-1.5 font-mono text-xs text-fairagro-red-light">
+            Failed to load graph: {loadError}
+          </div>
+        {:else if mutationError}
+          <div class="absolute top-2 left-2 rounded border border-fairagro-red bg-bg-panel px-3 py-1.5 font-mono text-xs text-fairagro-red-light">
+            {mutationErrorMessage(mutationError)}
+          </div>
+        {:else if isEditorDirty}
+          <div class="absolute top-2 left-2 rounded border border-border bg-bg-panel px-3 py-1.5 font-mono text-xs text-text-2">Editor has unsaved changes &middot; showing the last saved version</div>
+        {/if}
+      </div>
+    {/snippet}
+  </ContextMenu.Trigger>
+</ContextMenu.Root>
 
 <ConfirmDialog
   bind:open={deleteDialogOpen}
