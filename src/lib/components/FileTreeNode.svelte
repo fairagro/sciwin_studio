@@ -26,6 +26,31 @@
   let children = $state<FsEntry[] | null>(untrack(() => entry.children) ?? null);
   let loading = $state(false);
 
+  // The Workflows view (lazy=false) hands down its whole subtree upfront and
+  // refetches it wholesale on every change; sync that in so a file created
+  // inside an already-expanded folder shows up without collapsing it.
+  // Filesystem nodes (lazy=true) never get an entry.children from their
+  // parent, so this never overwrites their own on-demand fetch below.
+  $effect(() => {
+    if (entry.children) children = entry.children;
+  });
+
+  // Filesystem nodes fetch their children on demand instead, so a fsVersion
+  // bump (e.g. a file created via this node's own context menu) needs an
+  // explicit refetch to pick up the change -- expanded/children state is
+  // otherwise untouched by a reload, so a stale cache would go unnoticed.
+  let lastFsVersion = untrack(() => workspace.fsVersion);
+  $effect(() => {
+    const version = workspace.fsVersion;
+    if (version === lastFsVersion) return;
+    lastFsVersion = version;
+    if (lazy && expanded && children !== null) {
+      invoke<FsEntry[]>("list_dir", { path: entry.path })
+        .then((r) => (children = r))
+        .catch(() => {});
+    }
+  });
+
   // Only .cwl files make sense as a graph step; dropping anything else onto
   // the canvas would just fail add_workflow_step_node's load_cwl_file call.
   const isDraggableTool = $derived(!entry.isDir && entry.name.toLowerCase().endsWith(".cwl"));

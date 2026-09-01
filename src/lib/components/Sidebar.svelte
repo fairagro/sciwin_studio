@@ -63,10 +63,18 @@
   let loadingFilesystem = $state(false);
   let lastPath: string | null = null;
   let lastFsVersion = 0;
+  // Set whenever something might have changed on disk (a reload request, or
+  // workspace.fsVersion bumping); cleared once that view's actually been
+  // refetched. A stale, already-loaded view is replaced with fresh data in
+  // place rather than nulled out first -- nulling flips the template to its
+  // "Loading.../empty" branch, which unmounts every FileTreeNode and loses
+  // each folder's expanded state.
+  let workflowsStale = true;
+  let filesystemStale = true;
 
   function reloadCurrentView() {
-    if (workspace.sidebarView === "workflows") workflowEntries = null;
-    if (workspace.sidebarView === "filesystem") filesystemEntries = null;
+    if (workspace.sidebarView === "workflows") workflowsStale = true;
+    if (workspace.sidebarView === "filesystem") filesystemStale = true;
   }
 
   let showNewWorkflow = $state(false);
@@ -86,7 +94,7 @@
       const path = await invoke<string>("create_workflow", { dir, name });
       newWorkflowBusy = false;
       showNewWorkflow = false;
-      workflowEntries = null;
+      workspace.notifyFilesystemChanged();
       const fileName = path.split(/[\\/]/).pop() ?? path;
       await workspace.openTab(path, fileName);
     } catch (err) {
@@ -105,26 +113,37 @@
     const view = workspace.sidebarView;
     const fsVersion = workspace.fsVersion;
 
-    if (path !== lastPath || fsVersion !== lastFsVersion) {
+    if (path !== lastPath) {
+      // A different (or closed) project -- the old tree is genuinely wrong
+      // to keep showing, so this is the one case that clears it outright.
       lastPath = path;
-      lastFsVersion = fsVersion;
       workflowEntries = null;
       filesystemEntries = null;
+      workflowsStale = true;
+      filesystemStale = true;
+    }
+
+    if (fsVersion !== lastFsVersion) {
+      lastFsVersion = fsVersion;
+      workflowsStale = true;
+      filesystemStale = true;
     }
 
     if (!path) return;
 
-    if (view === "workflows" && workflowEntries === null && !loadingWorkflows) {
+    if (view === "workflows" && (workflowsStale || workflowEntries === null) && !loadingWorkflows) {
+      workflowsStale = false;
       loadingWorkflows = true;
       invoke<FsEntry[]>("get_cwl_files", { root: path })
         .then((r) => (workflowEntries = r))
-        .catch(() => (workflowEntries = []))
+        .catch(() => (workflowEntries = workflowEntries ?? []))
         .finally(() => (loadingWorkflows = false));
-    } else if (view === "filesystem" && filesystemEntries === null && !loadingFilesystem) {
+    } else if (view === "filesystem" && (filesystemStale || filesystemEntries === null) && !loadingFilesystem) {
+      filesystemStale = false;
       loadingFilesystem = true;
       invoke<FsEntry[]>("list_dir", { path })
         .then((r) => (filesystemEntries = r))
-        .catch(() => (filesystemEntries = []))
+        .catch(() => (filesystemEntries = filesystemEntries ?? []))
         .finally(() => (loadingFilesystem = false));
     }
   });
@@ -179,9 +198,9 @@
   <div class="flex-1 overflow-y-auto py-1">
     {#if workspace.projectPath}
       {#if workspace.sidebarView === "workflows"}
-        {#if loadingWorkflows}
+        {#if workflowEntries === null}
           <p class="px-3 font-mono text-[11px] text-text-3">Loading...</p>
-        {:else if workflowEntries && workflowEntries.length > 0}
+        {:else if workflowEntries.length > 0}
           {#each workflowEntries as entry (entry.path)}
             <FileTreeNode {entry} depth={0} lazy={false} />
           {/each}
@@ -189,9 +208,9 @@
           <p class="px-3 font-mono text-[11px] text-text-3">No .cwl files found.</p>
         {/if}
       {:else if workspace.sidebarView === "filesystem"}
-        {#if loadingFilesystem}
+        {#if filesystemEntries === null}
           <p class="px-3 font-mono text-[11px] text-text-3">Loading...</p>
-        {:else if filesystemEntries && filesystemEntries.length > 0}
+        {:else if filesystemEntries.length > 0}
           {#each filesystemEntries as entry (entry.path)}
             <FileTreeNode {entry} depth={0} lazy={true} />
           {/each}
