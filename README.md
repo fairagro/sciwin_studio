@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="SciWIn Studio logo" height="100"/>
+  <img src=".github/logo.png" alt="SciWIn Studio logo" height="100"/>
 </p>
 
 # SciWIn Studio<!-- omit from toc -->
