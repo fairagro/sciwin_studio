@@ -66,4 +66,5 @@ jobs:
           releaseBody: 'See the assets below to download this version.'
           releaseDraft: true
           prerelease: false
+          generateReleaseNotes: true
           args: ${{ matrix.args }}
