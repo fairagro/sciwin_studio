@@ -1,0 +1,56 @@
+[package]
+name = "sciwin_studio"
+version = "1.0.0-beta.3"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/fairagro/sciwin_studio"
+authors = [
+    "Jens Krumsieck",
+    "Antonia Leidel",
+    "Harald von Waldow",
+    "Patrick König",
+    "Xaver Stiensmeier",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "sciwin_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# fairagro
+sciwin = "2.0.0-beta.3"
+commonwl = "0.14"
+cwl-lsp = "0.14"
+
+# tauri
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2.7.2"
+
+# parsing
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-saphyr = "1"
+
+# async
+tokio = { version = "1", features = ["full"] }
+
+# io
+portable-pty = "0.9"
+ignore = "0.4"
+dunce = "1"
+
+# util
+tower-lsp-server = "0.23"
+petgraph = "0.8"
+
+[dev-dependencies]
+tempfile = "3"

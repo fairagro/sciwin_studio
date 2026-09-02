@@ -1,79 +1,12 @@
-[package]
-name = "sciwin_studio"
-version = "1.0.0-beta.2"
-edition = "2024"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/fairagro/sciwin_studio"
-authors = [
-    "Jens Krumsieck",
-    "Antonia Leidel",
-    "Harald von Waldow",
-    "Patrick König",
-    "Xaver Stiensmeier",
-]
+[workspace]
+members = ["src-tauri"]
+resolver = "3"
 
-[dependencies]
-# core
-sciwin = "2.0.0-beta.1"
-commonwl = "0.13"
-petgraph = "0.8.3"
 
-# UI
-dioxus = { version = "0.7.10", features = ["router"] }
-dioxus-free-icons = { version = "0.10.0", features = [
-    "octicons",
-    "material-design-icons-maps",
-] }
-dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
-rfd = { version = "0.17.2", default-features = false, features = [
-    "xdg-portal",
-] }
-
-# parsing
-serde = "1.0.229"
-serde_yaml = "0.9.34"
-serde_json = "1.0.151"
-toml = "1.1.4"
-
-# net
-reqwest = "0.13.4"
-
-# io
-pathdiff = "0.2.3"
-ignore = "0.4.33"
-dircpy = "0.3.20"
-
-# async
-async-trait = "0.1.92"
-tokio = { version = "1.48.0", features = ["time"] }
-tokio-util = "0.7.18"
-futures-util = "0.3.32"
-
-# util
-keyring = { version = "=3.6.3", features = [
-    "apple-native",
-    "linux-native",
-    "windows-native",
-] }
-anyhow = "1.0.104"
-secrecy = "0.10.3"
-chrono = "0.4.45"
-rust-sugiyama = "0.4.0"
-rand = "0.10.2"
-shlex = "2.0.1"
-
-[dev-dependencies]
-tempfile = "3.27.0"
-serial_test = "4.0.1"
-fstest = "0.4.0"
-
-[features]
-default = ["desktop"]
-web = ["dioxus/web"]
-desktop = ["dioxus/desktop"]
-mobile = ["dioxus/mobile"]
-
-# The profile that 'dist' will build with
-[profile.dist]
-inherits = "release"
-lto = "thin"
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

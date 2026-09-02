@@ -1,0 +1,110 @@
+@import "tailwindcss";
+@source "./**/*.{svelte,html,ts}";
+
+/* Self-hosted fonts (no CDN) — see @fontsource packages in package.json */
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
+:root {
+    /* UI Direction palette */
+    --bg: #121316;
+    --bg-panel: #1b1d21;
+    --bg-surface: #202226;
+    --bg-well: #0d0e10;
+    --border: #2b2e33;
+    --border-soft: #24262a;
+    --text: #eef0f2;
+    --text-2: #9aa0a8;
+    --text-3: #6b7078;
+
+    --green-hdr: #3f7a3a;
+    --teal-hdr: #0f8a78;
+    --blue-line: #6b93e0;
+    --blue-hdr: #3f6ab3;
+    --red-line: #f0806f;
+    --red-hdr: #7a2a36;
+}
+
+@theme inline {
+    --color-bg: var(--bg);
+    --color-bg-panel: var(--bg-panel);
+    --color-bg-surface: var(--bg-surface);
+    --color-bg-well: var(--bg-well);
+    --color-border: var(--border);
+    --color-border-soft: var(--border-soft);
+    --color-text: var(--text);
+    --color-text-2: var(--text-2);
+    --color-text-3: var(--text-3);
+
+    --color-green-hdr: var(--green-hdr);
+    --color-teal-hdr: var(--teal-hdr);
+    --color-blue-line: var(--blue-line);
+    --color-blue-hdr: var(--blue-hdr);
+    --color-red-line: var(--red-line);
+    --color-red-hdr: var(--red-hdr);
+}
+
+@theme {
+    --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+    --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+    /* fairagro-mid-500 (#6abf5c) and fairagro-dark-500 (#0f9884) double as the
+       UI Direction's --green / --teal accents */
+    --color-fairagro-mid-500: #6abf5c;
+    --color-fairagro-mid-400: #87cb7c;
+    --color-fairagro-mid-300: #a5d89d;
+    --color-fairagro-mid-200: #c3e5be;
+    --color-fairagro-mid-100: #e1f2df;
+
+    --color-fairagro-light-500: #9acb4e;
+    --color-fairagro-light-400: #aed571;
+    --color-fairagro-light-300: #c2df94;
+    --color-fairagro-light-200: #d6eab8;
+    --color-fairagro-light-100: #ebf4dc;
+
+    --color-fairagro-dark-500: #0f9884;
+    --color-fairagro-dark-400: #3fac9c;
+    --color-fairagro-dark-300: #6fc1b5;
+    --color-fairagro-dark-200: #9fd6ce;
+    --color-fairagro-dark-100: #cfeae6;
+
+    --color-fairagro-red-light: #f26e5f;
+    --color-fairagro-red: #973442;
+}
+
+body {
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+    /* App is dark-only -- without this, native form controls (select
+       dropdowns, the selected option's own text) auto-theme against a
+       light-mode guess and clash with the rest of the UI. */
+    color-scheme: dark;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+/* A noodle's per-type stroke color/width is set inline (styling.ts), which
+   otherwise buries xyflow's own .selected stroke-color rule -- equal
+   specificity, same source order. Widening + a white halo on top, rather
+   than recoloring, keeps the type color legible while still making the
+   selection state obvious, ComfyUI-style. */
+.svelte-flow__edge.selected .svelte-flow__edge-path {
+    stroke-width: 4px !important;
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff);
+}
