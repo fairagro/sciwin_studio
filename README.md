@@ -5,7 +5,7 @@
 # SciWIn Studio<!-- omit from toc -->
 
 [![🦆 Continuous Integration](https://github.com/fairagro/sciwin_studio/actions/workflows/ci.yml/badge.svg)](https://github.com/fairagro/sciwin_studio/actions/workflows/ci.yml)
-[![🧰 Bundle SciWIn Studio](https://github.com/fairagro/sciwin_studio/actions/workflows/bundle.yml/badge.svg)](https://github.com/fairagro/sciwin_studio/actions/workflows/bundle.yml)
+[![Release](https://github.com/fairagro/sciwin_studio/actions/workflows/release.yml/badge.svg)](https://github.com/fairagro/sciwin_studio/actions/workflows/release.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/fairagro/sciwin_studio?include_prereleases)](https://github.com/fairagro/sciwin_studio/releases)
 ![GitHub License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-green)
 
@@ -28,22 +28,22 @@
 - [License](#license)
 
 ## About
-Computational workflows make complex, multi-step analyses reproducible, scalable, and shareable, but authoring and running them by hand is tedious and error-prone. SciWIn Studio wraps the [`sciwin`](https://github.com/fairagro/sciwin) crate in a [Dioxus](https://dioxuslabs.com/) desktop application, so that creating CWL `CommandLineTool`s and `Workflow`s, wiring them together, and executing them is possible without ever leaving a graphical interface.
+Computational workflows make complex, multi-step analyses reproducible, scalable, and shareable, but authoring and running them by hand is tedious and error-prone. SciWIn Studio is a [Tauri](https://tauri.app/) desktop application, a Rust backend paired with a [SvelteKit](https://kit.svelte.dev/)/Svelte 5 frontend, that wraps the [`sciwin`](https://github.com/fairagro/sciwin) crate, so that creating CWL `CommandLineTool`s and `Workflow`s, wiring them together, and executing them is possible without ever leaving a graphical interface.
 
 Every SciWIn Studio project is a `sciwin`/`s4n` project on disk (a `workflow.toml` plus a git repository), so projects created or edited in the GUI stay fully compatible with the `s4n` CLI and vice versa.
 
 ## Features
-- **Visual workflow design** — arrange CWL tools on a canvas and connect their inputs and outputs with drag-and-drop
+- **Visual workflow design** — arrange CWL tools on a canvas and connect their inputs and outputs with drag-and-drop, powered by [`@xyflow/svelte`](https://svelteflow.dev/)
 - **Tool authoring** — generate new CWL `CommandLineTool`s from a command, container image, and arguments through a guided form
-- **Built-in code editor** — inspect and edit the underlying CWL YAML with a [Monaco](https://microsoft.github.io/monaco-editor/)-powered editor
+- **Built-in code editor** — inspect and edit the underlying CWL YAML with a [Monaco](https://microsoft.github.io/monaco-editor/)-powered editor, with language features (diagnostics, completion) served by an in-process `cwl-lsp` server
 - **Git-backed projects** — every change is staged and committed automatically, so a project's history is always a working, versioned record
 - **Workflow execution** — run workflows locally or remotely against a [REANA](https://reanahub.io/) instance, with credentials stored in the OS keychain and live execution logs in an in-app terminal
 
 ## Installation
-Pre-built bundles for Windows and Linux are produced on every push to `main` and can be downloaded from the [Actions tab](https://github.com/fairagro/sciwin_studio/actions/workflows/bundle.yml) until tagged releases are published to the [Releases page](https://github.com/fairagro/sciwin_studio/releases).
+Tagged releases are built for Windows, macOS (Intel and Apple Silicon), and Linux and published as [GitHub Releases](https://github.com/fairagro/sciwin_studio/releases) by [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 ## Development
-SciWIn Studio is built with the [Dioxus](https://dioxuslabs.com/) framework. To run it in development mode you need the [Dioxus CLI](https://dioxuslabs.com/learn/0.7/getting_started/) (`dx`) and the native GTK/WebKit dependencies used by the desktop renderer.
+SciWIn Studio is built with [Tauri v2](https://tauri.app/). To run it in development mode you need [Node.js](https://nodejs.org/) 22+, a recent Rust toolchain, and the native GTK/WebKit dependencies used by Tauri's desktop renderer.
 
 On Debian/Ubuntu:
 ```bash
@@ -62,20 +62,19 @@ sudo apt-get install -y \
     libayatana-appindicator3-dev \
     librsvg2-dev
 
-# Install the Dioxus CLI
-curl -sSL https://dioxus.dev/install.sh | bash
-# or (slower): cargo install dioxus-cli
+# Install frontend dependencies
+npm install
 
-# Launch SciWIn Studio in debug mode from the repository root
-dx serve -p sciwin_studio
+# Launch SciWIn Studio in dev mode (backend + frontend, hot reload)
+npx tauri dev
 ```
 
-For macOS and Windows, follow the platform-specific prerequisites in the [Dioxus getting started guide](https://dioxuslabs.com/learn/0.7/getting_started/).
+For macOS and Windows, follow the platform-specific prerequisites in the [Tauri getting started guide](https://tauri.app/start/prerequisites/).
 
-Bundles for release are produced with `dx bundle -p sciwin_studio --desktop --release` (see `.github/workflows/bundle.yml`), and tagged releases are built and published by [`cargo-dist`](https://github.com/axodotdev/cargo-dist) (see `.github/workflows/release.yml`).
+Production bundles are produced with `npx tauri build`. Tagged releases (`v*.*.*`) are built and published automatically for all platforms via [`tauri-apps/tauri-action`](https://github.com/tauri-apps/tauri-action) (see `.github/workflows/release.yml`).
 
 ## Ecosystem
-SciWIn Studio depends on the [`sciwin`](https://crates.io/crates/sciwin) and [`commonwl`](https://crates.io/crates/commonwl) crates from the main [SciWIn-Client](https://github.com/fairagro/sciwin) repository for project management, CWL parsing, and execution. Read the [SciWIn-Client documentation](https://fairagro.github.io/sciwin/) to learn more about the underlying CLI, project layout, and CWL concepts shared by both tools.
+SciWIn Studio depends on the [`sciwin`](https://crates.io/crates/sciwin) and [`commonwl`](https://crates.io/crates/commonwl) crates (including `cwl-lsp`, `commonwl`'s bundled CWL language server) from the main [SciWIn-Client](https://github.com/fairagro/sciwin) repository for project management, CWL parsing, and execution. Read the [SciWIn-Client documentation](https://fairagro.github.io/sciwin/) to learn more about the underlying CLI, project layout, and CWL concepts shared by both tools.
 
 ## Contributors
 <a href="https://github.com/fairagro/sciwin_studio/graphs/contributors">
