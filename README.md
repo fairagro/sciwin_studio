@@ -8,6 +8,7 @@
 [![Release](https://github.com/fairagro/sciwin_studio/actions/workflows/release.yml/badge.svg)](https://github.com/fairagro/sciwin_studio/actions/workflows/release.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/fairagro/sciwin_studio?include_prereleases)](https://github.com/fairagro/sciwin_studio/releases)
 ![GitHub License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-green)
+[![GitHub Downloads](https://raw.githubusercontent.com/fairagro/m4.4_metrics/refs/heads/master/sciwin_studio_badge.svg)]([https](https://github.com/fairagro/sciwin_studio/releases/latest))
 
 **SciWIn Studio** is the graphical desktop companion to [**SciWIn-Client**](https://github.com/fairagro/sciwin) (`s4n`), the FAIRagro Scientific Workflow Infrastructure. It gives researchers a visual way to build, inspect, and run reproducible [Common Workflow Language (CWL)](https://www.commonwl.org/) workflows, without needing to touch a terminal.
 
