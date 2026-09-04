@@ -974,6 +974,7 @@ pub fn set_output_link_merge(
 mod tests {
     use super::*;
     use commonwl::requirements::MultipleInputFeatureRequirement;
+    use commonwl::types::CWLType;
     use std::{fs, path::PathBuf};
     use tempfile::tempdir;
 
@@ -1438,6 +1439,97 @@ steps:
     }
 
     #[test]
+    fn connect_step_to_step_second_source_into_already_scattered_slot_needs_no_pick_value() {
+        let dir = tempdir().unwrap();
+        let array_producer = r"
+cwlVersion: v1.2
+class: CommandLineTool
+inputs: []
+outputs:
+- id: out
+  type: string[]
+baseCommand: echo
+";
+        fs::write(dir.path().join("producer.cwl"), array_producer).unwrap();
+        fs::write(dir.path().join("producer2.cwl"), array_producer).unwrap();
+        fs::write(dir.path().join("consumer.cwl"), CONSUMER_TOOL).unwrap(); // y: string
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs: []
+outputs: []
+steps:
+- id: producer
+  in: []
+  out:
+  - out
+  run: producer.cwl
+- id: producer2
+  in: []
+  out:
+  - out
+  run: producer2.cwl
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+  scatter: y
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer", "out"),
+            &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
+        )
+        .unwrap();
+        let revision = compute_revision(written.as_bytes());
+
+        // A second array source landing on a slot the step already scatters
+        // over must not require pickValue -- that disambiguates multiple
+        // sources merged into a scalar target, but a scattered slot consumes
+        // an array either way.
+        let written = connect_workflow_nodes_impl(
+            &path,
+            &revision,
+            false,
+            &endpoint(NodeKind::Step, "producer2", "out"),
+            &endpoint(NodeKind::Step, "consumer", "y"),
+            false,
+            None,
+        )
+        .unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let y = wf
+            .steps
+            .iter()
+            .find(|s| s.id.as_deref() == Some("consumer"))
+            .unwrap()
+            .r#in
+            .iter()
+            .find(|i| i.id.as_deref() == Some("y"))
+            .unwrap();
+        assert_eq!(
+            y.source,
+            Some(OneOrMany::Many(vec![
+                "producer/out".to_string(),
+                "producer2/out".to_string()
+            ]))
+        );
+        assert_eq!(y.pick_value, None);
+    }
+
+    #[test]
     fn connect_input_to_step_array_into_scalar_requires_scatter_confirmation() {
         let dir = tempdir().unwrap();
         fs::write(dir.path().join("consumer.cwl"), CONSUMER_TOOL).unwrap(); // y: string
@@ -1487,6 +1579,49 @@ steps:
                 .find(|i| i.id.as_deref() == Some("y"))
                 .and_then(|i| i.source.clone()),
             Some(OneOrMany::One("names".to_string()))
+        );
+    }
+
+    #[test]
+    fn connect_new_input_to_an_already_scattered_slot_gets_array_type() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("consumer.cwl"), CONSUMER_TOOL).unwrap(); // y: string
+        let workflow = r"
+cwlVersion: v1.2
+class: Workflow
+inputs: []
+outputs: []
+steps:
+- id: consumer
+  in: []
+  out:
+  - done
+  run: consumer.cwl
+  scatter: y
+";
+        let path = dir.path().join("workflow.cwl");
+        fs::write(&path, workflow).unwrap();
+        let revision = compute_revision(workflow.as_bytes());
+
+        let from = endpoint(NodeKind::Input, "names", "names");
+        let to = endpoint(NodeKind::Step, "consumer", "y");
+
+        // Already scattered -- neither scatter confirmation nor pickValue applies.
+        let written =
+            connect_workflow_nodes_impl(&path, &revision, false, &from, &to, false, None).unwrap();
+
+        let CWLDocument::Workflow(wf) = commonwl::from_str(&written).unwrap() else {
+            panic!("expected a workflow")
+        };
+        let input = wf
+            .inputs
+            .iter()
+            .find(|i| i.id.as_deref() == Some("names"))
+            .expect("a new workflow input must be registered");
+        assert_eq!(
+            input.r#type,
+            workflow::wrap_type_as_array(OneOrMany::One(InputType::CWLType(CWLType::String))),
+            "a fresh input feeding an already-scattered slot must be array-shaped, not the tool's per-iteration scalar type"
         );
     }
 
