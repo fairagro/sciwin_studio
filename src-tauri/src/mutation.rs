@@ -317,7 +317,12 @@ fn connect_workflow_nodes_impl(
                 }
             }
 
-            let to_is_array = to_type.as_ref().is_some_and(input_type_is_array);
+            // pickValue disambiguates multiple sources merged into a scalar
+            // target; a port the step already scatters over consumes an
+            // array instead, so a second source there needs linkMerge, not
+            // pickValue.
+            let to_is_array =
+                to_type.as_ref().is_some_and(input_type_is_array) || step_already_scatters(&wf, &to.id, &to.port);
             if !to_is_array
                 && step_input_already_sourced(&wf, &to.id, &to.port)
                 && pick_value.is_none()
@@ -397,7 +402,12 @@ fn connect_workflow_nodes_impl(
                 }
             }
 
-            let to_is_array = to_type.as_ref().is_some_and(input_type_is_array);
+            // pickValue disambiguates multiple sources merged into a scalar
+            // target; a port the step already scatters over consumes an
+            // array instead, so a second source there needs linkMerge, not
+            // pickValue.
+            let to_is_array =
+                to_type.as_ref().is_some_and(input_type_is_array) || step_already_scatters(&wf, &to.id, &to.port);
             if !to_is_array
                 && step_input_already_sourced(&wf, &to.id, &to.port)
                 && pick_value.is_none()

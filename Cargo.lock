@@ -7316,8 +7316,6 @@ dependencies = [
 [[package]]
 name = "sciwin"
 version = "2.0.0-beta.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef4771cf3a661c1fa968cf9b75b0438290c1fb503a0700f01c6bedc350fb29db"
 dependencies = [
  "anyhow",
  "async-stream",
