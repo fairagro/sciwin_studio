@@ -13,7 +13,7 @@ use files::{
     create_command_line_tool, create_workflow, cwl_doc_type, delete_file, get_cwl_files, list_dir,
     path_exists, read_file, write_file,
 };
-use git::{git_branch_info, git_checkout_branch, git_commit, git_stage_all, git_status};
+use git::{git_branch_info, git_checkout_branch, git_commit, git_discard_file, git_stage_all, git_status};
 use graph::get_workflow_graph;
 use layout::{get_node_layout, reset_node_layout, save_node_layout};
 use lsp::lsp_send;
@@ -79,6 +79,7 @@ pub fn run() {
             git_checkout_branch,
             git_status,
             git_stage_all,
+            git_discard_file,
             git_commit
         ])
         .run(tauri::generate_context!())

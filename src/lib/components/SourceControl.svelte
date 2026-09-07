@@ -1,7 +1,9 @@
 <script lang="ts">
     import { GitBranch } from "@lucide/svelte";
     import { invoke } from "@tauri-apps/api/core";
+    import { ContextMenu } from "bits-ui";
     import { workspace } from "$lib/state/workspace.svelte";
+    import SourceControlFileContextMenu from "./context-menu/SourceControlFile.svelte";
 
     let switching = $state(false);
     let branchError = $state<string | null>(null);
@@ -86,8 +88,19 @@
         {:else if workspace.uncommittedFiles.length > 0}
             <ul>
                 {#each workspace.uncommittedFiles as file (file)}
-                    <li class="truncate rounded px-0.5 py-1 font-mono text-xs text-text-2" title={file}>
-                        {file}
+                    <li class="hover:bg-bg-surface cursor-pointer">
+                        <ContextMenu.Root>
+                            <ContextMenu.Trigger>
+                                {#snippet child({ props })}
+                                    <div {...props} class="truncate rounded px-0.5 py-1 font-mono text-xs text-text-2" title={file}>
+                                        {file}
+                                    </div>
+                                {/snippet}
+                            </ContextMenu.Trigger>
+                            <ContextMenu.Portal>
+                                <SourceControlFileContextMenu {file} />
+                            </ContextMenu.Portal>
+                        </ContextMenu.Root>
                     </li>
                 {/each}
             </ul>
