@@ -6,6 +6,7 @@
   import FileTreeNode, { type FsEntry } from "./FileTreeNode.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import NewWorkflowDialog from "./NewWorkflowDialog.svelte";
+    import SourceControl from "./SourceControl.svelte";
 
   let showInitPrompt = $state(false);
   let pendingProjectPath = $state<string | null>(null);
@@ -218,7 +219,7 @@
           <p class="px-3 font-mono text-[11px] text-text-3">Empty folder.</p>
         {/if}
       {:else}
-        <p class="px-3 font-mono text-[11px] text-text-3">Source control panel coming soon.</p>
+        <SourceControl />
       {/if}
     {:else}
       <div class="flex flex-col items-center gap-3 px-2 pt-12 text-center">

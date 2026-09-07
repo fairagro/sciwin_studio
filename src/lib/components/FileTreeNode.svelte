@@ -84,7 +84,7 @@
         <button
           {...props}
           type="button"
-          class="flex w-full items-center gap-1.5 rounded py-0.75 pr-1 text-left font-mono text-[11.5px] whitespace-nowrap text-text-2 hover:bg-border-soft hover:text-text {!entry.isDir && entry.path === workspace.activePath
+          class="flex w-full items-center gap-1.5 rounded py-0.75 pr-1 text-left font-mono text-xs whitespace-nowrap text-text-2 hover:bg-border-soft hover:text-text {!entry.isDir && entry.path === workspace.activePath
             ? 'bg-fairagro-mid-500/14 text-text'
             : ''}"
           style="padding-left: {depth * 14 + 4}px"
@@ -114,7 +114,7 @@
 
   {#if entry.isDir && expanded}
     {#if loading}
-      <p class="font-mono text-[10.5px] text-text-3" style="padding-left: {(depth + 1) * 14 + 20}px">Loading...</p>
+      <p class="font-mono text-xs text-text-3" style="padding-left: {(depth + 1) * 14 + 20}px">Loading...</p>
     {:else if children}
       {#each children as child (child.path)}
         <FileTreeNode entry={child} depth={depth + 1} {lazy} />

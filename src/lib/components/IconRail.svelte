@@ -2,9 +2,20 @@
   import { workspace, type SidebarView } from "$lib/state/workspace.svelte";
   import { Workflow, Folder, GitBranch, SquareTerminal, Settings } from "@lucide/svelte";
 
+  const STATUS_POLL_INTERVAL_MS = 3000;
+
   function isActiveView(view: SidebarView) {
     return workspace.sidebarView === view && !workspace.sidebarCollapsed;
   }
+
+  $effect(() => {
+    const path = workspace.projectPath;
+    if (!path) return;
+
+    workspace.refreshGitStatus();
+    const interval = setInterval(() => workspace.refreshGitStatus(), STATUS_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  });
 </script>
 
 <div class="flex w-14 shrink-0 flex-col items-center gap-0.75 border-r border-border bg-bg-panel py-2 select-none">
@@ -40,7 +51,14 @@
     title="Source Control"
     onclick={() => workspace.selectSidebarView("sourcecontrol")}
   >
-    <GitBranch size={19} strokeWidth={1.8} />
+    <span class="relative">
+      <GitBranch size={19} strokeWidth={1.8} />
+      {#if workspace.uncommittedFiles.length > 0}
+        <span class="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-fairagro-red px-0.75 font-mono text-[0.6rem] font-semibold text-white">
+          {workspace.uncommittedFiles.length > 99 ? "99+" : workspace.uncommittedFiles.length}
+        </span>
+      {/if}
+    </span>
     <span class="font-mono text-[8.5px] font-semibold whitespace-nowrap">Git</span>
   </button>
 
@@ -56,7 +74,6 @@
     <SquareTerminal size={19} strokeWidth={1.8} />
     <span class="font-mono text-[8.5px] font-semibold whitespace-nowrap">Console</span>
   </button>
-  <div class="my-1.5 h-px w-5.5 bg-border-soft"></div>
   <button type="button" class="mb-0.5 flex w-12 flex-col items-center justify-center gap-1 rounded-md py-1.75 text-text-2 hover:bg-border-soft hover:text-text" title="Settings">
     <Settings size={19} strokeWidth={1.8} />
     <span class="font-mono text-[8.5px] font-semibold whitespace-nowrap">Settings</span>

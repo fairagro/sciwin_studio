@@ -24,9 +24,16 @@ export async function loadDocType(path: string): Promise<CWLDocType | null> {
   }
 }
 
+interface BranchInfo {
+  currentBranch: string | null;
+  availableBranches: string[];
+}
+
 class WorkspaceState {
   projectPath = $state<string | null>(null);
   projectName = $state<string | null>(null);
+  currentBranch = $state<string | null>(null);
+  availableBranches = $state<string[]>([]);
   // null = not yet checked, false = user declined init; other features gate on this
   projectHasConfig = $state<boolean | null>(null);
   tabs = $state<Tab[]>([]);
@@ -48,6 +55,11 @@ class WorkspaceState {
   // The open graph's revision, for the Inspector's own mutation calls --
   // kept in sync by GraphView, same as selectedNodeData.
   graphRevision = $state<string | null>(null);
+
+  // Polled periodically by IconRail (always mounted) so the git-tab badge
+  // stays live even while SourceControl itself isn't shown.
+  uncommittedFiles = $state<string[]>([]);
+  gitStatusLoaded = $state(false);
 
   activeTab = $derived(this.tabs.find((t) => t.path === this.activePath) ?? null);
 
@@ -94,14 +106,59 @@ class WorkspaceState {
     this.projectHasConfig = hasConfig;
     this.tabs = [];
     this.activePath = null;
+    this.loadBranches();
+  }
+
+  async loadBranches() {
+    if (!this.projectPath) return;
+    try {
+      const info = await invoke<BranchInfo>("git_branch_info", { path: this.projectPath });
+      this.currentBranch = info.currentBranch;
+      this.availableBranches = info.availableBranches;
+    } catch (error) {
+      console.error("Failed to load git branch info:", error);
+      this.currentBranch = null;
+      this.availableBranches = [];
+    }
+  }
+
+  // Throws on failure (e.g. uncommitted changes blocking checkout) so the
+  // caller can surface the error and revert its own UI state.
+  async checkoutBranch(branch: string) {
+    if (!this.projectPath) return;
+    const info = await invoke<BranchInfo>("git_checkout_branch", { path: this.projectPath, branch });
+    this.currentBranch = info.currentBranch;
+    this.availableBranches = info.availableBranches;
+    this.notifyFilesystemChanged();
+    this.refreshGitStatus();
+  }
+
+  async refreshGitStatus() {
+    if (!this.projectPath) {
+      this.uncommittedFiles = [];
+      this.gitStatusLoaded = false;
+      return;
+    }
+    try {
+      this.uncommittedFiles = await invoke<string[]>("git_status", { path: this.projectPath });
+    } catch (error) {
+      console.error("Failed to load git status:", error);
+      this.uncommittedFiles = [];
+    } finally {
+      this.gitStatusLoaded = true;
+    }
   }
 
   closeProject() {
     this.projectPath = null;
     this.projectName = null;
     this.projectHasConfig = null;
+    this.availableBranches = [];
+    this.currentBranch = null;
     this.tabs = [];
     this.activePath = null;
+    this.uncommittedFiles = [];
+    this.gitStatusLoaded = false;
   }
 
   async openTab(path: string, name: string) {
