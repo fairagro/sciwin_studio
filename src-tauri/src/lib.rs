@@ -10,7 +10,7 @@ mod project;
 mod session;
 mod terminal;
 
-use execution::{ExecutionState, execute_workflow};
+use execution::{ExecutionState, cancel_workflow, execute_workflow};
 use files::{
     create_command_line_tool, create_workflow, cwl_doc_type, delete_file, get_cwl_files, list_dir,
     path_exists, read_file, write_file,
@@ -84,7 +84,8 @@ pub fn run() {
             git_stage_all,
             git_discard_file,
             git_commit,
-            execute_workflow
+            execute_workflow,
+            cancel_workflow
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

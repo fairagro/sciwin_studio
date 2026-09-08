@@ -5,8 +5,23 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
-  import { SquareTerminal, RotateCw, X } from "@lucide/svelte";
+  import { SquareTerminal, ScrollText, RotateCw, X } from "@lucide/svelte";
   import { workspace } from "$lib/state/workspace.svelte";
+  import { execution } from "$lib/state/execution.svelte";
+
+  let consolePanel = $state<"terminal" | "output">("terminal");
+  let outputEl: HTMLDivElement;
+
+  // Autoscroll only if the viewer was already at (or near) the bottom -- otherwise new
+  // output while they've scrolled up to read an earlier step would keep yanking them back down.
+  $effect(() => {
+    void execution.output.length;
+    if (consolePanel !== "output" || !outputEl) return;
+    const nearBottom = outputEl.scrollHeight - outputEl.scrollTop - outputEl.clientHeight < 48;
+    if (nearBottom) {
+      requestAnimationFrame(() => (outputEl.scrollTop = outputEl.scrollHeight));
+    }
+  });
 
   interface S4nStatus {
     installed: boolean;
@@ -103,18 +118,41 @@
   class="flex shrink-0 flex-col border-t border-border bg-bg-panel {workspace.terminalOpen ? '' : 'hidden'}"
   style="height: {workspace.terminalHeight}px"
 >
-  <div class="flex h-8 shrink-0 items-center gap-2 border-b border-border-soft px-2.5">
-    <SquareTerminal size={13} strokeWidth={1.8} class="text-text-2" />
-    <span class="font-mono text-[11px] text-text">Console</span>
-    <div class="flex-1"></div>
+  <div class="flex h-8 shrink-0 items-center gap-1 border-b border-border-soft px-1.5">
     <button
       type="button"
-      class="rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
-      title="Restart terminal"
-      onclick={restartShell}
+      onclick={() => (consolePanel = "terminal")}
+      class="flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[11px] {consolePanel === 'terminal'
+        ? 'bg-border-soft text-text'
+        : 'text-text-2 hover:text-text'}"
     >
-      <RotateCw size={12} strokeWidth={1.8} />
+      <SquareTerminal size={13} strokeWidth={1.8} />
+      Terminal
     </button>
+    <button
+      type="button"
+      onclick={() => (consolePanel = "output")}
+      class="flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[11px] {consolePanel === 'output'
+        ? 'bg-border-soft text-text'
+        : 'text-text-2 hover:text-text'}"
+    >
+      <ScrollText size={13} strokeWidth={1.8} />
+      Output
+      {#if execution.isRunning}
+        <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-fairagro-mid-500"></span>
+      {/if}
+    </button>
+    <div class="flex-1"></div>
+    {#if consolePanel === "terminal"}
+      <button
+        type="button"
+        class="rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
+        title="Restart terminal"
+        onclick={restartShell}
+      >
+        <RotateCw size={12} strokeWidth={1.8} />
+      </button>
+    {/if}
     <button
       type="button"
       class="rounded p-0.5 text-text-3 hover:bg-border-soft hover:text-text"
@@ -124,5 +162,28 @@
       <X size={12} strokeWidth={1.8} />
     </button>
   </div>
-  <div bind:this={containerEl} class="min-h-0 flex-1 overflow-hidden bg-bg-well p-1.5"></div>
+  <div bind:this={containerEl} class="min-h-0 flex-1 overflow-hidden bg-bg-well p-1.5 {consolePanel === 'terminal' ? '' : 'hidden'}"></div>
+  <div
+    bind:this={outputEl}
+    class="mr-2 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-bg-well p-2 font-mono text-[11px] {consolePanel ===
+    'output'
+      ? ''
+      : 'hidden'}"
+  >
+    {#if execution.output.length === 0}
+      <p class="text-text-3">No step output yet -- appears here as each step finishes.</p>
+    {:else}
+      {#each execution.output as entry, i (i)}
+        <div class="mb-2.5 min-w-0">
+          <div class="mb-0.5 text-text-2">{entry.stepId}</div>
+          {#if entry.stdout}
+            <pre class="min-w-0 wrap-break-word whitespace-pre-wrap text-text">{entry.stdout}</pre>
+          {/if}
+          {#if entry.stderr}
+            <pre class="min-w-0 wrap-break-word whitespace-pre-wrap text-fairagro-red-light">{entry.stderr}</pre>
+          {/if}
+        </div>
+      {/each}
+    {/if}
+  </div>
 </div>

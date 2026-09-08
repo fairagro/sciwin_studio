@@ -1,10 +1,13 @@
 //! Runs a workflow in-process via `sciwin::execution::TaskRunner`, forwarding step-level
 //! progress to the frontend as Tauri events -- the backend half of a live execution overlay.
-//! No inputs-collection or run-cancellation UI yet; `execute_workflow` runs with an empty job.
+//! No inputs-collection UI yet; `execute_workflow` always runs with an empty job.
 
-use commonwl::engine::{ContainerEngine, InputObject, StepEvent};
+use commonwl::engine::{InputObject, StepEvent};
 use futures::StreamExt;
-use sciwin::execution::{RunStatus, TaskRunner, WorkflowRunner, local_backend};
+use sciwin::{
+    authoring::tool::auto_container_engine,
+    execution::{RunStatus, TaskRunner, WorkflowRunner, local_backend},
+};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,22 +19,33 @@ pub struct ExecutionState(Arc<TaskRunner>);
 
 impl Default for ExecutionState {
     fn default() -> Self {
-        Self(Arc::new(TaskRunner::new(local_backend(ContainerEngine::Docker))))
+        Self(Arc::new(TaskRunner::new(local_backend(
+            auto_container_engine().expect("no supported container engine found"),
+        ))))
     }
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StepEventPayload {
+    #[serde(rename_all = "camelCase")]
     Started {
         run_id: String,
         step_id: String,
         at: String,
     },
+    #[serde(rename_all = "camelCase")]
     Finished {
         run_id: String,
         step_id: String,
         at: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    Output {
+        run_id: String,
+        step_id: String,
+        stdout: String,
+        stderr: String,
     },
 }
 
@@ -65,10 +79,31 @@ pub async fn execute_workflow(
         .await
         .map_err(|e| e.to_string())?;
 
+    let _ = app.emit(
+        "execution://status",
+        RunStatusPayload {
+            run_id: run_id.clone(),
+            status: format_status(&RunStatus::Running),
+        },
+    );
+
     spawn_step_event_forwarder(app.clone(), runner.clone(), run_id.clone());
     spawn_status_forwarder(app, runner, run_id.clone());
 
     Ok(run_id)
+}
+
+/// Cancels a run started by [`execute_workflow`]. Cooperative where the engine supports it,
+/// otherwise `TaskRunner::cancel` hard-aborts after a short grace period -- see its own doc.
+///
+/// # Errors
+/// `run_id` is not a run this session started (or it already finished and was forgotten).
+#[tauri::command]
+pub async fn cancel_workflow(
+    state: State<'_, ExecutionState>,
+    run_id: String,
+) -> Result<(), String> {
+    state.0.cancel(&run_id).await.map_err(|e| e.to_string())
 }
 
 fn spawn_step_event_forwarder(app: AppHandle, runner: Arc<TaskRunner>, run_id: String) {
@@ -94,6 +129,16 @@ fn spawn_step_event_forwarder(app: AppHandle, runner: Arc<TaskRunner>, run_id: S
                     run_id: run_id.clone(),
                     step_id,
                     at: finished_at.to_string(),
+                },
+                StepEvent::Output {
+                    step_id,
+                    stdout,
+                    stderr,
+                } => StepEventPayload::Output {
+                    run_id: run_id.clone(),
+                    step_id,
+                    stdout,
+                    stderr,
                 },
             };
             let _ = app.emit("execution://step-event", payload);

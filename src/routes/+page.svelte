@@ -6,6 +6,7 @@
   import Editor from "$lib/components/Editor.svelte";
   import GraphView from "$lib/components/GraphView.svelte";
   import ViewModeToggle from "$lib/components/ViewModeToggle.svelte";
+  import ExecutionControls from "$lib/components/ExecutionControls.svelte";
   import Terminal from "$lib/components/Terminal.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
@@ -38,6 +39,9 @@
       {#if workspace.activeTab?.name.toLowerCase().endsWith(".cwl")}
         <div class="flex items-center border-b border-border bg-bg-panel px-2.5 py-1.5">
           <ViewModeToggle tab={workspace.activeTab} />
+          <div class="ml-auto">
+            <ExecutionControls tab={workspace.activeTab} />
+          </div>
         </div>
       {/if}
       <main class="relative flex-1 overflow-hidden">
