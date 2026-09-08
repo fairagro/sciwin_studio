@@ -1762,15 +1762,6 @@ dependencies = [
 
 [[package]]
 name = "commonwl"
-version = "0.14.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "107720356640ea5e6cef231bd02a60c1943b8529644b71eb854edb8430f7d323"
-dependencies = [
- "cwl_core",
-]
-
-[[package]]
-name = "commonwl"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "823358c8aeb7ce167a699b2ccc2e917b2f82f250248c5830c52cc343fda76872"
@@ -2266,11 +2257,11 @@ dependencies = [
 
 [[package]]
 name = "cwl-lsp"
-version = "0.14.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "934672aabea4a507164699db761cdac7e15d3643e04434da02e6bfbfb2636f19"
+checksum = "be74392a1e9901035c804b87cb99076474474aa134c0e3ae556a9d941fdfa35a"
 dependencies = [
- "commonwl 0.15.0",
+ "commonwl",
  "dashmap",
  "granit-parser",
  "ropey",
@@ -6638,7 +6629,7 @@ checksum = "3adf6842b0f7de94822f2697b1fa59889aea313289ffe5a8f3e6c6c5537448a1"
 dependencies = [
  "anyhow",
  "chrono",
- "commonwl 0.15.0",
+ "commonwl",
  "dunce",
  "glob",
  "miette",
@@ -7404,7 +7395,7 @@ dependencies = [
  "async-trait",
  "bon",
  "chrono",
- "commonwl 0.15.0",
+ "commonwl",
  "configparser",
  "crankshaft",
  "dunce",
@@ -7444,7 +7435,7 @@ dependencies = [
 name = "sciwin_studio"
 version = "1.0.0"
 dependencies = [
- "commonwl 0.14.1",
+ "commonwl",
  "cwl-lsp",
  "dunce",
  "futures",
