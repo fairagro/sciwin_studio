@@ -38,7 +38,7 @@ Every SciWIn Studio project is a `sciwin`/`s4n` project on disk (a `workflow.tom
 - **Tool authoring** — generate new CWL `CommandLineTool`s from a command, container image, and arguments through a guided form
 - **Built-in code editor** — inspect and edit the underlying CWL YAML with a [Monaco](https://microsoft.github.io/monaco-editor/)-powered editor, with language features (diagnostics, completion) served by an in-process `cwl-lsp` server
 - **Git-backed projects** — every change is staged and committed automatically, so a project's history is always a working, versioned record
-- **Workflow execution** — run workflows locally or remotely against a [REANA](https://reanahub.io/) instance, with credentials stored in the OS keychain and live execution logs in an in-app terminal
+- **Workflow execution** — run workflows locally (Docker, Podman, Singularity, or Apptainer), against a TES endpoint, or remotely on a [REANA](https://reanahub.io/) instance, with live execution logs in an in-app terminal; backend and S3 settings are persisted encrypted-at-rest on disk
 
 ## Installation
 Tagged releases are built for Windows, macOS (Intel and Apple Silicon), and Linux and published as [GitHub Releases](https://github.com/fairagro/sciwin_studio/releases) by [`.github/workflows/release.yml`](.github/workflows/release.yml).
