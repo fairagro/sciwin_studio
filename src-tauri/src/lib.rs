@@ -1,3 +1,4 @@
+mod execution;
 mod files;
 mod git;
 mod graph;
@@ -9,6 +10,7 @@ mod project;
 mod session;
 mod terminal;
 
+use execution::{ExecutionState, execute_workflow};
 use files::{
     create_command_line_tool, create_workflow, cwl_doc_type, delete_file, get_cwl_files, list_dir,
     path_exists, read_file, write_file,
@@ -33,6 +35,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState::default())
+        .manage(ExecutionState::default())
         .setup(|app| {
             lsp::init(app.handle());
             Ok(())
@@ -80,7 +83,8 @@ pub fn run() {
             git_status,
             git_stage_all,
             git_discard_file,
-            git_commit
+            git_commit,
+            execute_workflow
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
