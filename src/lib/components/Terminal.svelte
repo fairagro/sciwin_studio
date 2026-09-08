@@ -170,9 +170,12 @@
       ? ''
       : 'hidden'}"
   >
-    {#if execution.output.length === 0}
+    {#if execution.error}
+      <pre class="mb-3 min-w-0 wrap-break-word whitespace-pre-wrap rounded-md border border-fairagro-red/40 bg-fairagro-red/10 p-2 text-fairagro-red-light">{execution.error}</pre>
+    {/if}
+    {#if execution.output.length === 0 && !execution.error}
       <p class="text-text-3">No step output yet -- appears here as each step finishes.</p>
-    {:else}
+    {:else if execution.output.length > 0}
       {#each execution.output as entry, i (i)}
         <div class="mb-2.5 min-w-0">
           <div class="mb-0.5 text-text-2">{entry.stepId}</div>

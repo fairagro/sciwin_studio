@@ -12,6 +12,7 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ResizeHandles from "$lib/components/ResizeHandles.svelte";
   import ResizeHandle from "$lib/components/ResizeHandle.svelte";
+  import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import { workspace } from "$lib/state/workspace.svelte";
   import { restoreSession, scheduleSave } from "$lib/state/session";
   import { onMount } from "svelte";
@@ -72,3 +73,4 @@
   </div>
   <StatusBar />
 </div>
+<SettingsDialog bind:open={workspace.settingsOpen} />

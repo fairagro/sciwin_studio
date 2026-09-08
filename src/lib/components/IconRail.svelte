@@ -74,7 +74,12 @@
     <SquareTerminal size={19} strokeWidth={1.8} />
     <span class="font-mono text-[8.5px] font-semibold whitespace-nowrap">Console</span>
   </button>
-  <button type="button" class="mb-0.5 flex w-12 flex-col items-center justify-center gap-1 rounded-md py-1.75 text-text-2 hover:bg-border-soft hover:text-text" title="Settings">
+  <button
+    type="button"
+    class="mb-0.5 flex w-12 flex-col items-center justify-center gap-1 rounded-md py-1.75 text-text-2 hover:bg-border-soft hover:text-text"
+    title="Settings"
+    onclick={() => (workspace.settingsOpen = true)}
+  >
     <Settings size={19} strokeWidth={1.8} />
     <span class="font-mono text-[8.5px] font-semibold whitespace-nowrap">Settings</span>
   </button>

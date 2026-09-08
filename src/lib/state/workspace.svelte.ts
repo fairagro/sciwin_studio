@@ -43,6 +43,7 @@ class WorkspaceState {
   sidebarCollapsed = $state(false);
   sidebarWidth = $state(248);
   terminalOpen = $state(false);
+  settingsOpen = $state(false);
   terminalHeight = $state(176);
   // Bumped after a filesystem change the Sidebar didn't cause itself (e.g. a
   // delete from the context menu), so its cached tree gets invalidated.

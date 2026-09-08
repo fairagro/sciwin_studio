@@ -8,9 +8,10 @@ mod lsp;
 mod mutation;
 mod project;
 mod session;
+mod settings;
 mod terminal;
 
-use execution::{ExecutionState, cancel_workflow, execute_workflow};
+use execution::{ExecutionState, cancel_workflow, execute_workflow, list_backends};
 use files::{
     create_command_line_tool, create_workflow, cwl_doc_type, delete_file, get_cwl_files, list_dir,
     path_exists, read_file, write_file,
@@ -27,6 +28,11 @@ use mutation::{
 };
 use project::{has_workflow_config, init_sciwin_project};
 use session::{load_session, save_session};
+use settings::{
+    SettingsState, add_remote_backend, get_settings, remove_remote_backend, set_local_container_engine,
+    set_s3_settings, update_remote_backend,
+};
+use tauri::Manager;
 use terminal::{PtyState, check_s4n, pty_kill, pty_resize, pty_spawn, pty_write};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -38,6 +44,7 @@ pub fn run() {
         .manage(ExecutionState::default())
         .setup(|app| {
             lsp::init(app.handle());
+            app.manage(SettingsState::init(app.handle()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -85,7 +92,14 @@ pub fn run() {
             git_discard_file,
             git_commit,
             execute_workflow,
-            cancel_workflow
+            cancel_workflow,
+            list_backends,
+            get_settings,
+            set_local_container_engine,
+            set_s3_settings,
+            add_remote_backend,
+            update_remote_backend,
+            remove_remote_backend
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

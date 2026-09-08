@@ -4,6 +4,20 @@ import { listen } from "@tauri-apps/api/event";
 export type RunStatus = "created" | "queued" | "running" | "finished" | "failed" | "cancelled" | "stopped";
 export type StepStatus = "started" | "finished";
 
+// Matches src-tauri/src/execution.rs's BackendId.
+export type BackendId = { kind: "local" } | { kind: "docker" } | { kind: "remote"; id: string };
+
+export interface BackendSummary {
+  id: BackendId;
+  name: string;
+  available: boolean;
+  message: string | null;
+}
+
+export function backendKey(id: BackendId): string {
+  return id.kind === "remote" ? `remote:${id.id}` : id.kind;
+}
+
 type StepEventPayload =
   | { kind: "started"; runId: string; stepId: string; at: string }
   | { kind: "finished"; runId: string; stepId: string; at: string }
@@ -12,6 +26,7 @@ type StepEventPayload =
 interface RunStatusPayload {
   runId: string;
   status: RunStatus;
+  message: string | null;
 }
 
 // Bare CWL step id (e.g. "plot", not the graph's "step/plot" node id) -> whether it has
@@ -41,6 +56,10 @@ class ExecutionState {
   // cwlfile path -> job file path, so each open tab keeps its own choice. In-memory only for
   // now -- not persisted across app restarts (unlike, say, node layout).
   jobFileByCwlFile = $state<Record<string, string>>({});
+  // cwlfile path -> chosen backend, same in-memory-only scoping as jobFileByCwlFile. Defaults
+  // to Local, which is always in `backends` (see list_backends).
+  backendByCwlFile = $state<Record<string, BackendId>>({});
+  backends = $state<BackendSummary[]>([{ id: { kind: "local" }, name: "Local", available: true, message: null }]);
 
   isRunning = $derived(this.status !== null && !TERMINAL.has(this.status));
 
@@ -60,6 +79,7 @@ class ExecutionState {
       const payload = event.payload;
       if (payload.runId !== this.runId) return;
       this.status = payload.status;
+      if (payload.message) this.error = payload.message;
     });
   }
 
@@ -76,6 +96,24 @@ class ExecutionState {
     }
   }
 
+  backendFor(cwlfile: string): BackendId {
+    return this.backendByCwlFile[cwlfile] ?? { kind: "local" };
+  }
+
+  setBackend(cwlfile: string, backend: BackendId) {
+    this.backendByCwlFile = { ...this.backendByCwlFile, [cwlfile]: backend };
+  }
+
+  // Called whenever something that could change availability happened (opening the Run
+  // dropdown, saving Settings) -- see list_backends for what "available" means per kind.
+  async refreshBackends() {
+    try {
+      this.backends = await invoke<BackendSummary[]>("list_backends");
+    } catch (error) {
+      console.error("Failed to list backends:", error);
+    }
+  }
+
   async run(cwlfile: string) {
     if (this.isRunning) return;
     this.error = null;
@@ -85,6 +123,7 @@ class ExecutionState {
     this.status = "queued";
     try {
       this.runId = await invoke<string>("execute_workflow", {
+        backend: this.backendFor(cwlfile),
         cwlfile,
         inputFile: this.jobFileFor(cwlfile),
         outDir: null,
