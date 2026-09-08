@@ -38,6 +38,9 @@ class ExecutionState {
   // copied over after its process exits, so this is "as steps complete", not a live tail.
   output = $state<StepOutput[]>([]);
   error = $state<string | null>(null);
+  // cwlfile path -> job file path, so each open tab keeps its own choice. In-memory only for
+  // now -- not persisted across app restarts (unlike, say, node layout).
+  jobFileByCwlFile = $state<Record<string, string>>({});
 
   isRunning = $derived(this.status !== null && !TERMINAL.has(this.status));
 
@@ -60,6 +63,19 @@ class ExecutionState {
     });
   }
 
+  jobFileFor(cwlfile: string): string | null {
+    return this.jobFileByCwlFile[cwlfile] ?? null;
+  }
+
+  setJobFile(cwlfile: string, jobFile: string | null) {
+    if (jobFile === null) {
+      const { [cwlfile]: _removed, ...rest } = this.jobFileByCwlFile;
+      this.jobFileByCwlFile = rest;
+    } else {
+      this.jobFileByCwlFile = { ...this.jobFileByCwlFile, [cwlfile]: jobFile };
+    }
+  }
+
   async run(cwlfile: string) {
     if (this.isRunning) return;
     this.error = null;
@@ -68,7 +84,11 @@ class ExecutionState {
     this.output = [];
     this.status = "queued";
     try {
-      this.runId = await invoke<string>("execute_workflow", { cwlfile, outDir: null });
+      this.runId = await invoke<string>("execute_workflow", {
+        cwlfile,
+        inputFile: this.jobFileFor(cwlfile),
+        outDir: null,
+      });
       // The backend already emits this itself, but it does so before this `invoke` call
       // resolves -- by the time that event reaches the listener below, `this.runId` isn't
       // set yet, so its `payload.runId !== this.runId` guard drops it. Set it here instead,

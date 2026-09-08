@@ -1,15 +1,16 @@
 //! Runs a workflow in-process via `sciwin::execution::TaskRunner`, forwarding step-level
 //! progress to the frontend as Tauri events -- the backend half of a live execution overlay.
-//! No inputs-collection UI yet; `execute_workflow` always runs with an empty job.
+//! `execute_workflow` runs with an empty job unless the frontend passes `input_file`, a
+//! YAML/JSON job file the user picked (see `ExecutionControls.svelte`).
 
-use commonwl::engine::{InputObject, StepEvent};
+use commonwl::engine::{InputObject, StepEvent, load_input_file_from_file};
 use futures::StreamExt;
 use sciwin::{
     authoring::tool::auto_container_engine,
     execution::{RunStatus, TaskRunner, WorkflowRunner, local_backend},
 };
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
@@ -60,22 +61,33 @@ pub struct RunStatusPayload {
 /// arrives afterward as `execution://step-event` and `execution://status` events carrying that
 /// same `run_id`, so a caller with multiple runs going can tell them apart.
 ///
+/// `input_file`, if given, is a YAML/JSON job file
+///
 /// # Errors
-/// The file fails to load, or the runner rejects the submission (see
+/// The CWL file or job file fails to load, or the runner rejects the submission (see
 /// `sciwin::execution::RunnerError`).
 #[tauri::command]
 pub async fn execute_workflow(
     app: AppHandle,
     state: State<'_, ExecutionState>,
     cwlfile: String,
+    input_file: Option<String>,
     out_dir: Option<String>,
 ) -> Result<String, String> {
     let runner = state.0.clone();
     let cwlfile = PathBuf::from(cwlfile);
     let out_dir = out_dir.map(PathBuf::from);
 
+    let inputs = match input_file {
+        Some(path) => {
+            let base_path = cwlfile.parent().unwrap_or_else(|| Path::new("."));
+            load_input_file_from_file(PathBuf::from(path), base_path).map_err(|e| e.to_string())?
+        }
+        None => InputObject::default(),
+    };
+
     let run_id = runner
-        .submit(&cwlfile, InputObject::default(), out_dir.as_deref())
+        .submit(&cwlfile, inputs, out_dir.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
