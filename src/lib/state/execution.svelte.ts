@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { workspace } from "./workspace.svelte";
 
 export type RunStatus = "created" | "queued" | "running" | "finished" | "failed" | "cancelled" | "stopped";
 export type StepStatus = "started" | "finished";
@@ -126,7 +127,10 @@ class ExecutionState {
         backend: this.backendFor(cwlfile),
         cwlfile,
         inputFile: this.jobFileFor(cwlfile),
-        outDir: null,
+        // `execute_workflow` falls back to the Tauri process's own cwd (essentially arbitrary
+        // for a desktop app) when this is omitted, so outputs land somewhere unpredictable
+        // unless the project root is passed explicitly here.
+        outDir: workspace.projectPath,
       });
       // The backend already emits this itself, but it does so before this `invoke` call
       // resolves -- by the time that event reaches the listener below, `this.runId` isn't
