@@ -1,7 +1,8 @@
 # Changelog
-## Unreleased
+## v1.0.1
 ### 🐛 Bugfixes
 - Fixed execution outdir
+- Updated dependencies `reana`, `commonwl` and `sciwin`
 
-## 1.0.0
+## v1.0.0
 Initial Release

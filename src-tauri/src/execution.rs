@@ -307,7 +307,7 @@ pub async fn execute_workflow(
     );
 
     spawn_step_event_forwarder(app.clone(), runner.clone(), run_id.clone());
-    spawn_status_forwarder(app, runner, run_id.clone());
+    spawn_status_forwarder(app, runner, run_id.clone(), out_dir);
 
     Ok(run_id)
 }
@@ -369,15 +369,27 @@ fn spawn_step_event_forwarder(app: AppHandle, runner: DynamicRunner, run_id: Str
     });
 }
 
-fn spawn_status_forwarder(app: AppHandle, runner: DynamicRunner, run_id: String) {
+fn spawn_status_forwarder(
+    app: AppHandle,
+    runner: DynamicRunner,
+    run_id: String,
+    out_dir: Option<PathBuf>,
+) {
     tokio::spawn(async move {
         if let Ok(status) = runner.wait_for_completion(&run_id).await {
-            // `wait_for_completion` only returns once `status` is terminal, so anything other
-            // than `Finished` here is a run that didn't complete cleanly -- worth asking the
-            // runner if it has more to say than the bare status (e.g. ReanaRunner's
+            // `wait_for_completion` only returns once `status` is terminal. For a clean finish,
+            // outputs still need pulling from the runner (e.g. ReanaRunner::outputs downloads
+            // them from the remote workspace -- Local/Docker already wrote theirs to `out_dir`
+            // during execution, so this is a no-op there); a failure to do so downgrades an
+            // otherwise-successful run to reporting an error, same as the CLI's `wait_and_report`.
+            // Anything other than `Finished` means the run didn't complete cleanly -- worth
+            // asking the runner if it has more to say than the bare status (e.g. ReanaRunner's
             // `failure_detail` walks the failed job's own logs for this).
             let message = if status == RunStatus::Finished {
-                None
+                match runner.outputs(&run_id, out_dir.as_deref()).await {
+                    Ok(_) => None,
+                    Err(e) => Some(format!("failed to fetch outputs: {e}")),
+                }
             } else {
                 runner.failure_detail(&run_id).await.ok().flatten()
             };
