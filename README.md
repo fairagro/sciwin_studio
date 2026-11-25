@@ -96,3 +96,10 @@ SciWIn Studio depends on the [`sciwin`](https://crates.io/crates/sciwin) and [`c
 This work is dual-licensed under Apache 2.0 and MIT. You can choose between one of them if you use this work.
 
 `SPDX-License-Identifier: Apache-2.0 OR MIT`
+
+## Acknowledgements
+ 
+This work was created as part of the NFDI consortium FAIRagro (www.fairagro.net). We gratefully acknowledge the financial support of the German Research Foundation (DFG) – project number 501899475.
+ 
+<img src="https://fairagro.net/assets/Fairagro_Logo_lb_ohLiRand_weiss.svg" alt="FAIRagro Logo" style="width:300px;" />
+
